@@ -1,0 +1,8 @@
+# Build artifacts / generated files
+*.o
+ps2pad-diag.elf
+ps2pad-diag.iso
+ps2pad-diag-usa.iso
+controller_bg.c
+splash_bg.c
+click_adp.c
