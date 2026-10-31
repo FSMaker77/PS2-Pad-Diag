@@ -8,6 +8,10 @@ Diagnostic tool for PlayStation 2 controllers (DualShock / DualShock 2),
 PS2 port of the PS1 project
 [ControlDiagPSX](https://github.com/FSMaker77/ControlDiagPSX).
 
+![PS2 Pad Diag controller](controller_ps2.png)
+
+![PS2 Pad Diag splash](splash.jpg)
+
 ---
 
 ## Italiano
@@ -26,8 +30,8 @@ Mostra a schermo un render del DualShock 2 e verifica in tempo reale:
   (barra BIG), **R2** per il piccolo (barra SML);
 - il **click audio** su ogni pressione di pulsante.
 
-La schermata usa il controller reale `assets/controller_ps2.png` e la splash
-`assets/splash.jpg` con la barra di caricamento nel riquadro vuoto. La UI è
+La schermata usa il controller reale `controller_ps2.png` e la splash
+`splash.jpg` con la barra di caricamento nel riquadro vuoto. La UI è
 pensata su una griglia 320×224 scalata 2× (640×448 NTSC) con margini per
 l'overscan. Il testo usa un font bitmap 5×10 incorporato (Terminus, SIL OFL
 1.1, vedi `FONT-LICENSE.txt`).
@@ -95,8 +99,8 @@ Shows a DualShock 2 render and live-tests:
   the small one (SML bar);
 - a short **click sound** on every button press.
 
-The screen uses the real controller artwork `assets/controller_ps2.png` and
-the splash `assets/splash.jpg` with the loading bar inside the empty frame.
+The screen uses the real controller artwork `controller_ps2.png` and
+the splash `splash.jpg` with the loading bar inside the empty frame.
 The UI is designed on a 320×224 grid scaled 2× (640×448 NTSC) with CRT
 overscan margins. Text uses an embedded 5×10 bitmap font (Terminus, SIL OFL
 1.1, see `FONT-LICENSE.txt`).
@@ -156,9 +160,9 @@ The `.elf` and both ISOs are attached to release **v1.0** on the
 | `audio.c/h` | audsrv ADPCM click |
 | `font6x8.h` | generated 5×10 bitmap font |
 | `click.sad` | generated one-shot ADPCM click |
-| `assets/controller_ps2.png` | controller artwork |
+| `controller_ps2.png` | controller artwork |
 | `assets/controller.raw` | 640×448 CT32 controller background |
-| `assets/splash.jpg` | splash artwork |
+| `splash.jpg` | splash artwork |
 | `assets/splash.raw` | 640×448 CT32 splash background |
 | `sio2man.irx`, `padman.irx` | pad IOP modules (in the ISO) |
 | `libsd.irx`, `audsrv.irx` | audio IOP modules (in the ISO) |

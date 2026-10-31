@@ -8,8 +8,8 @@ build embeds with bin2c.  Run from the project root:
 from PIL import Image
 
 ITEMS = [
-    ("assets/controller_ps2.png", "assets/controller.raw"),
-    ("assets/splash.jpg",         "assets/splash.raw"),
+    ("controller_ps2.png", "assets/controller.raw"),
+    ("splash.jpg",         "assets/splash.raw"),
 ]
 W, H = 640, 448
 
