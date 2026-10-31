@@ -8,9 +8,10 @@ Diagnostic tool for PlayStation 2 controllers (DualShock / DualShock 2),
 PS2 port of the PS1 project
 [ControlDiagPSX](https://github.com/FSMaker77/ControlDiagPSX).
 
-![PS2 Pad Diag controller](controller_ps2.png)
-
-![PS2 Pad Diag splash](splash.jpg)
+<p align="center">
+  <a href="controller_ps2.png"><img src="preview_controller.png" width="480" alt="PS2 Pad Diag controller"></a>
+  <a href="splash.jpg"><img src="preview_splash.jpg" width="480" alt="PS2 Pad Diag splash"></a>
+</p>
 
 ---
 
