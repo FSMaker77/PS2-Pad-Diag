@@ -76,9 +76,7 @@ I file `.elf` e le due ISO sono allegati alla release **v1.0** nella pagina
 
 ### Note PCSX2
 
-Il **Fast Boot** di PCSX2 non avvia le ISO homebrew basate su ELF (crash nel
-crt0 di ps2sdk): disattivalo e usa il boot BIOS, oppure avvia direttamente
-`ps2pad-diag.elf`.
+
 
 ---
 
@@ -145,11 +143,6 @@ The program outputs NTSC: the TV must accept 60 Hz.
 The `.elf` and both ISOs are attached to release **v1.0** on the
 [Releases](../../releases) page.
 
-### PCSX2 note
-
-PCSX2 **Fast Boot** cannot start homebrew ELF-based ISOs (it crashes in the
-ps2sdk startup): disable it and boot through the BIOS, or run
-`ps2pad-diag.elf` directly.
 
 ---
 
