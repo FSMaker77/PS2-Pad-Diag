@@ -35,4 +35,7 @@ PadState pad_ps2_get(int port);
  * followed by padGetState() for ports 1 and 2. */
 void pad_ps2_diag(char *buf, int size);
 
+/* Same, but with where SIO2MAN/PADMAN came from (for the bottom line). */
+void pad_ps2_diag_modules(char *buf, int size);
+
 #endif

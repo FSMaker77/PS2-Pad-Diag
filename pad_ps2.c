@@ -17,8 +17,12 @@ static uint8_t port_open[2];
 /* Diagnostics shown on screen when no pad is detected. */
 static int dbg_sio = -1;
 static int dbg_pad = -1;
+static int dbg_sio_res;
+static int dbg_pad_res;
 static int dbg_init = -1;
 static int dbg_open[2] = { -1, -1 };
+static char dbg_sio_path[56] = "";
+static char dbg_pad_path[56] = "";
 
 static void pad_open_port(int port);
 
@@ -131,13 +135,34 @@ static void pad_send_motors(int port, unsigned char state)
  * into the ROM are the last resort. */
 static void pad_load_modules(void)
 {
+    /* OPL (and FMCB) already keep sio2man/padman in the IOP.  Loading our
+     * own copies would put two drivers on the SIO2 bus and the pad would
+     * answer with PAD_STATE_ERROR, so use the resident ones. */
+    if (mod_rpc_alive(PADMAN_RPC_ID)) {
+        dbg_sio = dbg_pad = 0;
+        dbg_sio_res = dbg_pad_res = 1;
+        snprintf(dbg_sio_path, sizeof(dbg_sio_path), "(already there)");
+        snprintf(dbg_pad_path, sizeof(dbg_pad_path), "(already there)");
+        return;
+    }
+
     dbg_sio = mod_load("SIO2MAN.IRX");
-    if (dbg_sio < 0)
+    dbg_sio_res = 0;
+    if (dbg_sio < 0) {
         dbg_sio = SifLoadModule("rom0:XSIO2MAN", 0, NULL);
+        snprintf(dbg_sio_path, sizeof(dbg_sio_path), "rom0:XSIO2MAN");
+    } else {
+        snprintf(dbg_sio_path, sizeof(dbg_sio_path), "%s", mod_last_path());
+    }
 
     dbg_pad = mod_load("PADMAN.IRX");
-    if (dbg_pad < 0)
+    dbg_pad_res = 0;
+    if (dbg_pad < 0) {
         dbg_pad = SifLoadModule("rom0:XPADMAN", 0, NULL);
+        snprintf(dbg_pad_path, sizeof(dbg_pad_path), "rom0:XPADMAN");
+    } else {
+        snprintf(dbg_pad_path, sizeof(dbg_pad_path), "%s", mod_last_path());
+    }
 }
 
 void pad_ps2_init(void)
@@ -201,13 +226,19 @@ static void pad_open_port(int port)
 
 void pad_ps2_diag(char *buf, int size)
 {
+    /* o = loaded by us, r = already resident in the IOP, - = failed */
     snprintf(buf, size, "S:%c P:%c I:%c O:%c/%c %x/%x",
-             dbg_sio >= 0 ? 'o' : '-',
-             dbg_pad >= 0 ? 'o' : '-',
+             dbg_sio < 0 ? '-' : (dbg_sio_res ? 'r' : 'o'),
+             dbg_pad < 0 ? '-' : (dbg_pad_res ? 'r' : 'o'),
              dbg_init > 0 ? 'o' : '-',
              dbg_open[0] > 0 ? 'o' : '-',
              dbg_open[1] > 0 ? 'o' : '-',
              last_state[0], last_state[1]);
+}
+
+void pad_ps2_diag_modules(char *buf, int size)
+{
+    snprintf(buf, size, "SIO %s  PAD %s", dbg_sio_path, dbg_pad_path);
 }
 
 void pad_ps2_poll(void)

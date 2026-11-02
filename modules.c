@@ -1,16 +1,23 @@
 /*
  * IOP module loader that does not depend on where the ELF was launched from.
  *
- * An ELF started as an OPL app has no cdrom0: with the modules on it, and the
- * USB stick can be mass0:, mass1:, ... depending on the driver in use, so a
- * single hardcoded path is not enough.  Every candidate is tried in order and
- * the first one that loads wins.
+ * An ELF started as an OPL app has no cdrom0: with the modules on it, the USB
+ * stick can be mass0:, mass1:, ... depending on the driver in use, and OPL /
+ * FMCB may already have sio2man/padman/libsd/audsrv resident in the IOP.
+ *
+ * Loading a second copy of sio2man or padman is fatal: two drivers end up on
+ * the SIO2 bus and the controller stops answering with PAD_STATE_ERROR.  So
+ * the callers first check mod_rpc_alive() and only load when nothing is
+ * running.  SifSearchModuleByName() would be the obvious API for that, but it
+ * blocks forever on PCSX2, hence the non blocking bind probe below.
  */
 
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
 #include <loadfile.h>
+#include <sifrpc.h>
+#include <kernel.h>
 
 #include "modules.h"
 
@@ -43,6 +50,32 @@ void mod_set_base_dir(const char *dir)
     base_dir[n] = '\0';
 }
 
+int mod_rpc_alive(int sid)
+{
+    static SifRpcClientData_t cd __attribute__((aligned(64)));
+    int i;
+
+    memset(&cd, 0, sizeof(cd));
+
+    if (sceSifBindRpc(&cd, sid, SIF_RPC_M_NOWAIT) < 0)
+        return 0;
+
+    /* The IOP answers the bind with a SIF command; spin for a short while
+     * (interrupts are enabled by the time we get here).  An absent server
+     * simply never fills cd.server. */
+    for (i = 0; i < 400; i++) {
+        int j;
+
+        if (cd.server)
+            return 1;
+
+        for (j = 0; j < 4000; j++)
+            __asm__ __volatile__("nop\nnop\nnop\nnop");
+    }
+
+    return 0;
+}
+
 static void lower_copy(char *dst, const char *src, size_t size)
 {
     size_t i;
@@ -66,6 +99,7 @@ int mod_load(const char *name)
     int ret;
     size_t i;
 
+    last_path[0] = '\0';
     lower_copy(lower, name, sizeof(lower));
 
     for (i = 0; i < sizeof(fmt) / sizeof(fmt[0]); i++) {
@@ -95,6 +129,5 @@ int mod_load(const char *name)
         return ret;
     }
 
-    last_path[0] = '\0';
     return -1;
 }

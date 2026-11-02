@@ -455,6 +455,14 @@ static void draw_ui(const PadState pads[2], const PadState *ctl, int port,
     draw_axes(ctl, b);
 
     /* Vibration motor bars ----------------------------------------------- */
+    if (!ctl || !ctl->connected) {
+        /* No pad: use the bottom line to show where the IOP modules came
+         * from, which is what decides whether the pad can work at all. */
+        pad_ps2_diag_modules(buf, sizeof(buf));
+        text_out_c(6, 210, buf, C_DIM);
+        return;
+    }
+
     sprintf(buf, "%3d", motor_l);
     text_out_c( 10, 208, "BIG", C_DIM);
     draw_level_bar(34, 208, 100, 9, motor_l, ctl && ctl->connected);
