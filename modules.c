@@ -91,7 +91,14 @@ static const char *const candidate_fmt[] = {
 
 static int build_candidate(char *path, size_t size, const char *name, size_t i)
 {
-    snprintf(path, size, candidate_fmt[i], base_dir, name);
+    /* Only the first format has two %s (directory + file name); every other
+     * one takes just the file name.  Passing both arguments to every format
+     * made "%s" pick up base_dir, i.e. "mass:/APPS/" with no file at all. */
+    if (i == 0)
+        snprintf(path, size, "%s%s", base_dir, name);
+    else
+        snprintf(path, size, candidate_fmt[i], name);
+
     return 0;
 }
 
