@@ -27,24 +27,6 @@ static int dbg_reloaded;
 
 static void pad_open_port(int port);
 
-static int pad_mode_supported(int port, int mode)
-{
-    int count = padInfoMode(port, 0, PAD_MODETABLE, -1);
-    int i;
-
-    if (count <= 0) {
-        return 0;
-    }
-
-    for (i = 0; i < count; i++) {
-        if (padInfoMode(port, 0, PAD_MODETABLE, i) == mode) {
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
 static void pressure_reset(int port)
 {
     PadState *st = &pad_state[port];
@@ -57,8 +39,7 @@ static void pressure_reset(int port)
 
 static void pad_update_type(int port)
 {
-    switch (padInfoMode(port, 0, PAD_MODECURID, 0)) {
-    case PAD_TYPE_DIGITAL:
+    switch (padInfoMode(port, 0, PAD_MODECURID, 0)) {    case PAD_TYPE_DIGITAL:
         pad_state[port].type = PAD_ID_DIGITAL;
         break;
     case PAD_TYPE_ANALOG:
@@ -80,6 +61,7 @@ static uint8_t act_supported[2];
 static uint8_t act_checked[2];
 static uint16_t act_cooldown[2];
 static uint8_t mode_set_done[2];
+static uint8_t type_checks[2];
 static uint8_t last_state[2];
 static uint16_t stuck_frames[2];
 static uint8_t reopen_tries[2];
@@ -186,6 +168,7 @@ void pad_ps2_init(void)
     memset(act_checked, 0, sizeof(act_checked));
     memset(act_cooldown, 0, sizeof(act_cooldown));
     memset(mode_set_done, 0, sizeof(mode_set_done));
+    memset(type_checks, 0, sizeof(type_checks));
     memset(last_state, 0, sizeof(last_state));
     memset(stuck_frames, 0, sizeof(stuck_frames));
     memset(reopen_tries, 0, sizeof(reopen_tries));
@@ -277,22 +260,16 @@ void pad_ps2_poll(void)
         state = padGetState(port, 0);
         last_state[port] = state;
 
-        /* Ask for the DualShock mode when the pad answers, but only once per
-         * connection: padInfoMode() is an SIO2 round trip and must not run
-         * every frame. */
-        if ((state == PAD_STATE_STABLE || state == PAD_STATE_FINDCTP1) &&
-            !mode_set_done[port]) {
-            mode_set_done[port] = 1;
-            if (pad_mode_supported(port, PAD_TYPE_DUALSHOCK) &&
-                padInfoMode(port, 0, PAD_MODECURID, 0) != PAD_TYPE_DUALSHOCK) {
-                padSetMainMode(port, 0, PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK);
-            }
-        }
-
-        if (state == PAD_STATE_STABLE && padRead(port, 0, &buttons) != 0) {
+        /* PAD_STATE_EXECCMD (5) means "STABLE, but a request is still
+         * pending".  libpad's padInfoMode()/padSetMainMode() set that request
+         * state and padman only clears it between transfers, so reading only
+         * while the state is exactly STABLE deadlocks as soon as we ask for
+         * any information.  Try to read in both states: padRead() returns 0
+         * when no data is available. */
+        if ((state == PAD_STATE_STABLE || state == PAD_STATE_EXECCMD) &&
+            padRead(port, 0, &buttons) != 0) {
             PadState *sp = &pad_state[port];
 
-            mode_set_done[port] = 1;
             reopen_tries[port] = 0;
             sp->connected = 1;
             sp->buttons = buttons.btns;
@@ -300,7 +277,23 @@ void pad_ps2_poll(void)
             sp->ls_y = buttons.ljoy_v;
             sp->rs_x = buttons.rjoy_h;
             sp->rs_y = buttons.rjoy_v;
-            pad_update_type(port);
+
+            /* Ask for the DualShock mode once per connection, then poll the
+             * pad type for a short while so the switch shows up.  These are
+             * SIO2 round trips that mark the request BUSY, but reading works
+             * while a request is pending, so they cannot deadlock us. */
+            if (!mode_set_done[port]) {
+                mode_set_done[port] = 1;
+                if (padInfoMode(port, 0, PAD_MODETABLE, -1) > 0) {
+                    padSetMainMode(port, 0, PAD_MMODE_DUALSHOCK,
+                                   PAD_MMODE_LOCK);
+                }
+            }
+
+            if (type_checks[port] < 90) {
+                type_checks[port]++;
+                pad_update_type(port);
+            }
 
             /* Configure the actuators once per connection so that
              * padSetActDirect() can actually drive the vibration motors. */
@@ -356,6 +349,7 @@ void pad_ps2_poll(void)
             act_checked[port] = 0;
             act_cooldown[port] = 0;
             mode_set_done[port] = 0;
+            type_checks[port] = 0;
             press_enabled[port] = 0;
             pressure_reset(port);
         }
