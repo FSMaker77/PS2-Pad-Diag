@@ -24,6 +24,7 @@ static int dbg_open[2] = { -1, -1 };
 static char dbg_sio_path[56] = "";
 static char dbg_pad_path[56] = "";
 static int dbg_reloaded;
+static int dbg_from_rom;
 
 static void pad_open_port(int port);
 
@@ -135,6 +136,7 @@ static void pad_load_modules(void)
     dbg_sio_res = 0;
     if (dbg_sio < 0) {
         dbg_sio = SifLoadModule("rom0:XSIO2MAN", 0, NULL);
+        dbg_from_rom = 1;
         snprintf(dbg_sio_path, sizeof(dbg_sio_path), "rom0:XSIO2MAN");
     } else {
         snprintf(dbg_sio_path, sizeof(dbg_sio_path), "%s", mod_last_path());
@@ -144,6 +146,7 @@ static void pad_load_modules(void)
     dbg_pad_res = 0;
     if (dbg_pad < 0) {
         dbg_pad = SifLoadModule("rom0:XPADMAN", 0, NULL);
+        dbg_from_rom = 1;
         snprintf(dbg_pad_path, sizeof(dbg_pad_path), "rom0:XPADMAN");
     } else {
         snprintf(dbg_pad_path, sizeof(dbg_pad_path), "%s", mod_last_path());
@@ -238,6 +241,11 @@ void pad_ps2_diag(char *buf, int size)
 
 void pad_ps2_diag_modules(char *buf, int size)
 {
+    if (dbg_from_rom) {
+        snprintf(buf, size, "COPY SIO2MAN.IRX+PADMAN.IRX IN APPS/");
+        return;
+    }
+
     snprintf(buf, size, "SIO %s  PAD %s", dbg_sio_path, dbg_pad_path);
 }
 
