@@ -80,6 +80,8 @@ static uint8_t act_checked[2];
 static uint16_t act_cooldown[2];
 static uint8_t mode_set_done[2];
 static uint8_t last_state[2];
+static uint16_t stuck_frames[2];
+static uint8_t reopen_tries[2];
 
 #define ACT_MIN_FRAMES 15   /* ~250 ms at 60 Hz */
 
@@ -184,6 +186,8 @@ void pad_ps2_init(void)
     memset(act_cooldown, 0, sizeof(act_cooldown));
     memset(mode_set_done, 0, sizeof(mode_set_done));
     memset(last_state, 0, sizeof(last_state));
+    memset(stuck_frames, 0, sizeof(stuck_frames));
+    memset(reopen_tries, 0, sizeof(reopen_tries));
 
     for (port = 0; port < 2; port++) {
         pad_state[port].type = PAD_ID_NONE;
@@ -226,14 +230,25 @@ static void pad_open_port(int port)
 
 void pad_ps2_diag(char *buf, int size)
 {
-    /* o = loaded by us, r = already resident in the IOP, - = failed */
-    snprintf(buf, size, "S:%c P:%c I:%c O:%c/%c %x/%x",
+    /* o = loaded by us, r = already resident in the IOP, - = failed.
+     * The last pair is the request state: o=complete, b=busy, !=failed. */
+    static const char rst[] = { 'o', '!', 'b' };
+    unsigned char r0 = padGetReqState(0, 0);
+    unsigned char r1 = padGetReqState(1, 0);
+
+    if (r0 > 2)
+        r0 = 0;
+    if (r1 > 2)
+        r1 = 0;
+
+    snprintf(buf, size, "S:%c P:%c I:%c O:%c/%c %x/%x %c/%c",
              dbg_sio < 0 ? '-' : (dbg_sio_res ? 'r' : 'o'),
              dbg_pad < 0 ? '-' : (dbg_pad_res ? 'r' : 'o'),
              dbg_init > 0 ? 'o' : '-',
              dbg_open[0] > 0 ? 'o' : '-',
              dbg_open[1] > 0 ? 'o' : '-',
-             last_state[0], last_state[1]);
+             last_state[0], last_state[1],
+             rst[r0], rst[r1]);
 }
 
 void pad_ps2_diag_modules(char *buf, int size)
@@ -260,6 +275,23 @@ void pad_ps2_poll(void)
         state = padGetState(port, 0);
         last_state[port] = state;
 
+        /* PAD_STATE_EXECCMD means "the pad is busy with a request".  A short
+         * burst is normal, but if it never ends the port state machine is
+         * stuck: close and reopen it, which resets it cleanly. */
+        if (state == PAD_STATE_EXECCMD) {
+            if (++stuck_frames[port] > 300 && reopen_tries[port] < 3) {
+                reopen_tries[port]++;
+                stuck_frames[port] = 0;
+                padPortClose(port, 0);
+                port_open[port] = 0;
+                mode_set_done[port] = 0;
+                act_checked[port] = 0;
+                act_align_sent[port] = 0;
+            }
+        } else {
+            stuck_frames[port] = 0;
+        }
+
         /* Ask for the DualShock mode when the pad answers, but only once per
          * connection: padInfoMode() is an SIO2 round trip and must not run
          * every frame. */
@@ -276,6 +308,7 @@ void pad_ps2_poll(void)
             PadState *sp = &pad_state[port];
 
             mode_set_done[port] = 1;
+            reopen_tries[port] = 0;
             sp->connected = 1;
             sp->buttons = buttons.btns;
             sp->ls_x = buttons.ljoy_h;

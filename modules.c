@@ -53,27 +53,18 @@ void mod_set_base_dir(const char *dir)
 int mod_rpc_alive(int sid)
 {
     static SifRpcClientData_t cd __attribute__((aligned(64)));
-    int i;
 
     memset(&cd, 0, sizeof(cd));
 
-    if (sceSifBindRpc(&cd, sid, SIF_RPC_M_NOWAIT) < 0)
+    /* A blocking bind is safe here: the IOP always answers a bind request,
+     * with sd == NULL when no server has that id, so this returns quickly
+     * either way.  The SIF_RPC_M_NOWAIT variant used before was a trap: the
+     * reply often arrived after the spin ended, giving a false "not there"
+     * and making us load a second padman on top of the resident one. */
+    if (sceSifBindRpc(&cd, sid, 0) < 0)
         return 0;
 
-    /* The IOP answers the bind with a SIF command; spin for a short while
-     * (interrupts are enabled by the time we get here).  An absent server
-     * simply never fills cd.server. */
-    for (i = 0; i < 400; i++) {
-        int j;
-
-        if (cd.server)
-            return 1;
-
-        for (j = 0; j < 4000; j++)
-            __asm__ __volatile__("nop\nnop\nnop\nnop");
-    }
-
-    return 0;
+    return cd.server != NULL;
 }
 
 static void lower_copy(char *dst, const char *src, size_t size)
