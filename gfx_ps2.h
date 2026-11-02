@@ -13,7 +13,10 @@
 #define TEXT_W   6
 #define TEXT_H   10
 
-void gfx_ps2_init(void);
+/* force_mode: 0 = follow the console region (PAL console -> 576i, NTSC
+ * console -> 480i), 1 = always NTSC 480i (PAL 60 Hz), 2 = always PAL 576i. */
+void gfx_ps2_init(int force_mode);
+const char *gfx_ps2_mode_name(void);
 void gfx_ps2_begin_frame(int r, int g, int b);
 void gfx_ps2_end_frame(void);
 void gfx_ps2_draw_background(void);

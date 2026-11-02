@@ -339,7 +339,7 @@ static void draw_ui(const PadState pads[2], const PadState *ctl, int port,
     text_out_c(158, 4, buf, port == 1 ? 0 : 110, port == 1 ? 220 : 112,
                port == 1 ? 110 : 130);
 
-    sprintf(buf, "F%05d", (int)(frame % 100000));
+    sprintf(buf, "%s F%05d", gfx_ps2_mode_name(), (int)(frame % 100000));
     text_right_c(268, 4, buf, C_DIM);
 
     /* Separate shoulder buttons: tint the exact rounded silhouettes. */
@@ -494,11 +494,33 @@ int main(int argc, const char **argv)
     uint32_t rumble_phase = 0;
     uint32_t frame = 0;
     uint32_t f;
+    int force_mode = 0;
+    int i;
 
-    (void)argc;
-    (void)argv;
+    /* Optional "-ntsc" / "-pal" arguments force the video mode (the ISO
+     * boots without arguments and follows the console region instead). */
+    for (i = 1; i < argc; i++) {
+        if (!argv[i])
+            continue;
+        if (strcmp(argv[i], "-ntsc") == 0 || strcmp(argv[i], "ntsc") == 0)
+            force_mode = 1;
+        else if (strcmp(argv[i], "-pal") == 0 || strcmp(argv[i], "pal") == 0)
+            force_mode = 2;
+    }
 
-    gfx_ps2_init();
+    gfx_ps2_init(force_mode);
+
+    /* Plain, texture-free frame first: if the console shows this, the GS
+     * path and the video mode are fine and anything that goes wrong later
+     * is in the IOP modules or in the artwork upload. */
+    gfx_ps2_begin_frame(C_BG);
+    text_center_c(160, 100, "STARTING...", C_TEXT);
+    gfx_ps2_end_frame();
+
+    /* Load the IOP modules and open the pads before the splash, so that the
+     * splash is only shown once the tool is really ready to run. */
+    pad_ps2_init();
+    audio_init();
 
     for (f = 0; f < SPLASH_FRAMES; f++) {
         gfx_ps2_begin_frame(C_BG);
@@ -508,9 +530,6 @@ int main(int argc, const char **argv)
 
     /* Splash done: release its texture and upload the tester background. */
     gfx_ps2_begin_controller();
-
-    pad_ps2_init();
-    audio_init();
 
     while (1) {
         const PadState *ctl;

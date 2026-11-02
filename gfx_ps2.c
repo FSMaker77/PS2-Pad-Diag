@@ -28,12 +28,13 @@ static GSGLOBAL *gs_global;
 #define BG_W 640
 #define BG_H 448
 
-/* Opaque CT32 snapshots embedded at link time.  The splash is uploaded first,
+/* Opaque CT32 snapshots embedded at link time (bin2c generates the
+ * <name> array plus a size_<name> length).  The splash is uploaded first,
  * then released so the tester background can take its place in VRAM. */
 extern unsigned char controller_bg[];
-extern unsigned int controller_bg_size;
+extern unsigned int size_controller_bg;
 extern unsigned char splash_bg[];
-extern unsigned int splash_bg_size;
+extern unsigned int size_splash_bg;
 
 static GSTEXTURE bg_tex;
 static u32 *bg_mem;
@@ -53,6 +54,18 @@ static void setup_texture(GSTEXTURE *tex, u32 *mem)
 /* Alpha used by the solid primitives (0x80 = opaque, 0x40 = half). */
 static int cur_alpha = 0x80;
 
+/* Vertical offset (in real 640x448 pixels) applied to every drawing call.
+ * It is 0 on NTSC (448 lines) and 32 on PAL (512 lines), where the 448-line
+ * UI is centred inside the taller frame. */
+static int gfx_y_off;
+
+static int gfx_mode_pal;
+
+const char *gfx_ps2_mode_name(void)
+{
+    return gfx_mode_pal ? "PAL" : "NTSC";
+}
+
 void gfx_ps2_set_alpha(int alpha)
 {
     if (alpha < 0) alpha = 0;
@@ -60,27 +73,56 @@ void gfx_ps2_set_alpha(int alpha)
     cur_alpha = alpha;
 }
 
-void gfx_ps2_init(void)
+void gfx_ps2_init(int force_mode)
 {
+    int i;
+
     dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC,
                 D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
     dmaKit_chan_init(DMA_CHANNEL_GIF);
 
     gs_global = gsKit_init_global();
 
-    gs_global->Mode      = GS_MODE_NTSC;
+    /* gsKit already selected GS_MODE_PAL / GS_MODE_NTSC from rom0:ROMVER.
+     * Forcing NTSC unconditionally is what left a PAL television without a
+     * picture: the console was switched to 60 Hz even on a 50 Hz TV. */
+    if (force_mode == 1)
+        gs_global->Mode = GS_MODE_NTSC;
+    else if (force_mode == 2)
+        gs_global->Mode = GS_MODE_PAL;
+
+    gfx_mode_pal = (gs_global->Mode == GS_MODE_PAL);
+
     gs_global->Interlace = GS_INTERLACED;
     gs_global->Field     = GS_FIELD;
     gs_global->Width     = 640;
-    gs_global->Height    = 448;
+    gs_global->Height    = gfx_mode_pal ? 512 : 448;
 
     /* Pure 2D UI: draw in submission order, no Z buffer, no texture filtering
      * (the font is already pixel-exact). */
-    gs_global->ZBuffering     = GS_SETTING_OFF;
+    gs_global->ZBuffering      = GS_SETTING_OFF;
     gs_global->DoubleBuffering = GS_SETTING_ON;
     gs_global->PrimAlphaEnable = GS_SETTING_ON;
 
     gsKit_init_screen(gs_global);
+
+    /* The UI is 448 lines tall: centre it in a 512-line PAL frame.  The
+     * letterbox rows stay black (gsKit_clear covers the whole frame). */
+    gfx_y_off = (gs_global->Height - BG_H) / 2;
+    if (gfx_y_off < 0)
+        gfx_y_off = 0;
+
+    /* gsKit's first flip points DISPFB at the framebuffer it has *not* drawn
+     * yet.  Real GS VRAM reads back as 0xff (white) at power-on, while
+     * PCSX2 zeroes it, so any failure before the first application flip
+     * looked like a white screen on the console and like a black one in the
+     * emulator.  Paint both buffers before anything else can go wrong. */
+    for (i = 0; i < 2; i++) {
+        gsKit_clear(gs_global, GS_SETREG_RGBAQ(0, 0, 0, 0x80, 0));
+        gsKit_queue_exec(gs_global);
+        gsKit_sync_flip(gs_global);
+    }
+
     gsKit_mode_switch(gs_global, GS_PERSISTENT);
     gsKit_set_test(gs_global, GS_ZTEST_OFF);
     gsKit_set_primalpha(gs_global, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
@@ -131,9 +173,9 @@ void draw_rect(int x, int y, int w, int h, int r, int g, int b)
         return;
 
     x1 = (float)(x * UI_SCALE);
-    y1 = (float)(y * UI_SCALE);
+    y1 = (float)((y * UI_SCALE) + gfx_y_off);
     x2 = (float)((x + w) * UI_SCALE);
-    y2 = (float)((y + h) * UI_SCALE);
+    y2 = (float)(((y + h) * UI_SCALE) + gfx_y_off);
 
     /* Triangle-strip order: top-left, bottom-left, top-right, bottom-right. */
     gsKit_prim_quad(gs_global, x1, y1, x1, y2, x2, y1, x2, y2,
@@ -144,10 +186,10 @@ void gfx_ps2_draw_splash(void)
 {
     gfx_ps2_set_alpha(0x80);
     gsKit_prim_quad_texture(gs_global, &bg_tex,
-                            0.0f,   0.0f,   0.0f,   0.0f,
-                            0.0f,   448.0f, 0.0f,   448.0f,
-                            640.0f, 0.0f,   640.0f, 0.0f,
-                            640.0f, 448.0f, 640.0f, 448.0f,
+                            0.0f,           (float)gfx_y_off,           0.0f,   0.0f,
+                            0.0f,           (float)(gfx_y_off + BG_H),  0.0f,   448.0f,
+                            640.0f,         (float)gfx_y_off,           640.0f, 0.0f,
+                            640.0f,         (float)(gfx_y_off + BG_H),  640.0f, 448.0f,
                             0, GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x80, 0));
 }
 
@@ -167,10 +209,10 @@ void gfx_ps2_draw_background(void)
 {
     gfx_ps2_set_alpha(0x80);
     gsKit_prim_quad_texture(gs_global, &bg_tex,
-                            0.0f,   0.0f,   0.0f,   0.0f,
-                            0.0f,   448.0f, 0.0f,   448.0f,
-                            640.0f, 0.0f,   640.0f, 0.0f,
-                            640.0f, 448.0f, 640.0f, 448.0f,
+                            0.0f,           (float)gfx_y_off,           0.0f,   0.0f,
+                            0.0f,           (float)(gfx_y_off + BG_H),  0.0f,   448.0f,
+                            640.0f,         (float)gfx_y_off,           640.0f, 0.0f,
+                            640.0f,         (float)(gfx_y_off + BG_H),  640.0f, 448.0f,
                             0, GS_SETREG_RGBAQ(0x80, 0x80, 0x80, 0x80, 0));
 }
 

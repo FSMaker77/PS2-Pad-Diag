@@ -72,7 +72,14 @@ altro file.
 - `ps2pad-diag.iso` — regione **EUR/PAL**, per la console PAL originale
 - `ps2pad-diag-usa.iso` — regione **USA/NTSC**
 
-Il programma imposta l'uscita NTSC: la TV deve accettare i 60 Hz.
+Il programma **segue la regione della console**: su una PS2 PAL esce a 576i/50 Hz,
+su una PS2 NTSC a 480i/60 Hz. La UI (640×448) viene centrata nella cornice PAL
+con bande nere sopra e sotto. Per forzare la modalità si possono passare gli
+argomenti `-ntsc` o `-pal` all'ELF (es. via ps2link), ma non servono per le ISO.
+
+> **Se sullo schermo vedi solo bianco** leggi la sezione *Risoluzione problemi*
+> più sotto: è quasi sempre la TV che non aggancia i 60 Hz, oppure il buffer
+> del GS che non è mai stato disegnato (memoria video non inizializzata).
 
 ### Release
 
@@ -81,7 +88,43 @@ I file `.elf` e le due ISO sono allegati alla release **v1.0** nella pagina
 
 ### Note PCSX2
 
+PCSX2 azzera la memoria video all'avvio, la PS2 no (di norma contiene `0xff`,
+cioè bianco). Per questo un errore che in emulatore si vede come **schermo
+nero** sulla console si vede come **schermo bianco**: il GS sta mostrando un
+framebuffer che nessuno ha ancora disegnato. Ora entrambi i framebuffer vengono
+riempiti subito dopo l'inizializzazione, e la sequenza di avvio è:
 
+1. schermata `STARTING...` (solo rettangoli, nessuna texture);
+2. caricamento moduli IOP e pad;
+3. splash con la barra di avanzamento;
+4. schermata principale.
+
+Quindi, se sulla console vedi:
+
+- **bianco** → il problema è prima della schermata `STARTING...`: modalità
+  video/TV oppure GS che non parte;
+- **`STARTING...` che resta fermo** → si blocca nel caricamento dei moduli
+  IOP (`SIO2MAN`/`PADMAN`/`LIBSD`/`AUDSRV`);
+- **splash e poi nero/bloccato** → problema nel caricamento della texture;
+- **la UI** → tutto ok.
+
+### Risoluzione problemi
+
+**Schermo bianco / nessun segnale sulla PS2**
+
+- Verifica che la TV accetti il segnale della console: la UI segue la regione,
+  quindi su una PS2 PAL esce a 50 Hz. Se la TV è collegata tramite un adattatore
+  HDMI/scaler, controlla che supporti 576i.
+- Se hai bruciato la ISO sbagliata per la tua console, usa quella della tua
+  regione (`ps2pad-diag.iso` PAL, `ps2pad-diag-usa.iso` NTSC).
+- Con una console PAL e una TV che accetta i 60 Hz puoi forzare NTSC lanciando
+  l'ELF con l'argomento `-ntsc`.
+
+**Il pad non risponde**
+
+- Con l'ELF avviato da memory card/USB i moduli `cdrom0:` non esistono: il
+  programma ripiega su `rom0:XSIO2MAN`/`rom0:XPADMAN`. Se anche questi non
+  bastano, copia `SIO2MAN.IRX` e `PADMAN.IRX` accanto all'ELF.
 
 ---
 
@@ -141,7 +184,14 @@ required.
 - `ps2pad-diag.iso` — **EUR/PAL** region, for an original PAL console
 - `ps2pad-diag-usa.iso` — **USA/NTSC** region
 
-The program outputs NTSC: the TV must accept 60 Hz.
+The program **follows the console region**: a PAL PS2 outputs 576i/50 Hz, an
+NTSC PS2 outputs 480i/60 Hz. The 640×448 UI is centred inside the PAL frame
+with black bars above and below. The mode can be forced by passing `-ntsc` or
+`-pal` to the ELF (e.g. through ps2link); the ISOs need no arguments.
+
+> **If you only get a white screen** see *Troubleshooting* below: it is almost
+> always a TV that cannot lock to 60 Hz, or a GS framebuffer that was never
+> drawn (uninitialised video memory).
 
 ### Releases
 
@@ -150,6 +200,38 @@ The `.elf` and both ISOs are attached to release **v1.0** on the
 
 
 ---
+
+### Troubleshooting
+
+PCSX2 zeroes video memory at boot, the PS2 does not (it normally reads back as
+`0xff`, i.e. white). That is why a bug that looks like a **black screen** in the
+emulator looks like a **white screen** on the console: the GS is scanning out a
+framebuffer nobody has drawn yet. Both framebuffers are now painted right after
+initialisation, and the boot sequence is:
+
+1. `STARTING...` screen (rectangles only, no texture);
+2. IOP modules and pad loading;
+3. splash with the progress bar;
+4. main screen.
+
+So, on the console:
+
+- **white** → the failure is before `STARTING...`: video mode/TV or GS init;
+- **`STARTING...` stays** → stuck loading the IOP modules
+  (`SIO2MAN`/`PADMAN`/`LIBSD`/`AUDSRV`);
+- **splash, then black/frozen** → texture upload problem;
+- **the UI** → everything works.
+
+Other checks:
+
+- The UI follows the console region (PAL PS2 → 50 Hz). Make sure the TV or the
+  HDMI/scaler accepts 576i, and burn the ISO for the console's region
+  (`ps2pad-diag.iso` PAL, `ps2pad-diag-usa.iso` NTSC).
+- On a PAL console with a 60 Hz capable TV, launch the ELF with `-ntsc` to force
+  480i.
+- When the ELF is launched from a memory card/USB the `cdrom0:` modules do not
+  exist; the tool falls back to `rom0:XSIO2MAN`/`rom0:XPADMAN`. If that is not
+  enough, copy `SIO2MAN.IRX` and `PADMAN.IRX` next to the ELF.
 
 ## Project layout
 
