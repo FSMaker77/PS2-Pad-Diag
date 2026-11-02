@@ -68,27 +68,44 @@ static void pad_update_type(int port)
     }
 }
 
-static void pad_send_motors(int port)
+/* padInfoAct() is an SIO2 round trip: ask once per connection and keep the
+ * answer.  Calling it (and padInfoMode) every frame disturbs padman's own
+ * polling and puts the port in PAD_STATE_ERROR on a real console. */
+static uint8_t act_supported[2];
+static uint8_t act_checked[2];
+static uint16_t act_cooldown[2];
+static uint8_t mode_set_done[2];
+static uint8_t last_state[2];
+
+#define ACT_MIN_FRAMES 15   /* ~250 ms at 60 Hz */
+
+static void pad_send_motors(int port, unsigned char state)
 {
     uint8_t prev_small;
     uint8_t prev_big;
 
-    if (!pad_state[port].connected) {
+    if (!pad_state[port].connected || state != PAD_STATE_STABLE) {
         return;
     }
 
-    if (padInfoAct(port, 0, -1, 0) == 0) {
-        return;
+    if (!act_checked[port]) {
+        act_supported[port] = padInfoAct(port, 0, -1, 0) > 0;
+        act_checked[port] = 1;
     }
 
-    /* Do not queue a new actuator command while the previous one is still
-     * being executed by the pad. */
-    if (padGetState(port, 0) != PAD_STATE_STABLE) {
+    if (!act_supported[port]) {
         return;
     }
 
     if (act_align[port][0] == motor_small[port] &&
         act_align[port][1] == motor_big[port]) {
+        return;
+    }
+
+    /* Give the pad time to execute the previous actuator command: poking it
+     * every frame is what made the controller drop out. */
+    if (act_cooldown[port] > 0) {
+        act_cooldown[port]--;
         return;
     }
 
@@ -98,9 +115,12 @@ static void pad_send_motors(int port)
     act_align[port][0] = motor_small[port];
     act_align[port][1] = motor_big[port];
 
-    if (!padSetActDirect(port, 0, (const char *)act_align[port])) {
+    if (padSetActDirect(port, 0, (const char *)act_align[port])) {
+        act_cooldown[port] = ACT_MIN_FRAMES;
+    } else {
         act_align[port][0] = prev_small;
         act_align[port][1] = prev_big;
+        act_cooldown[port] = ACT_MIN_FRAMES;
     }
 }
 
@@ -135,6 +155,10 @@ void pad_ps2_init(void)
     memset(motor_small, 0, sizeof(motor_small));
     memset(motor_big, 0, sizeof(motor_big));
     memset(port_open, 0, sizeof(port_open));
+    memset(act_checked, 0, sizeof(act_checked));
+    memset(act_cooldown, 0, sizeof(act_cooldown));
+    memset(mode_set_done, 0, sizeof(mode_set_done));
+    memset(last_state, 0, sizeof(last_state));
 
     for (port = 0; port < 2; port++) {
         pad_state[port].type = PAD_ID_NONE;
@@ -183,7 +207,7 @@ void pad_ps2_diag(char *buf, int size)
              dbg_init > 0 ? 'o' : '-',
              dbg_open[0] > 0 ? 'o' : '-',
              dbg_open[1] > 0 ? 'o' : '-',
-             padGetState(0, 0), padGetState(1, 0));
+             last_state[0], last_state[1]);
 }
 
 void pad_ps2_poll(void)
@@ -203,27 +227,40 @@ void pad_ps2_poll(void)
             pad_open_port(port);
 
         state = padGetState(port, 0);
+        last_state[port] = state;
 
+        /* Ask for the DualShock mode when the pad answers, but only once per
+         * connection: padInfoMode() is an SIO2 round trip and must not run
+         * every frame. */
         if ((state == PAD_STATE_STABLE || state == PAD_STATE_FINDCTP1) &&
-            pad_mode_supported(port, PAD_TYPE_DUALSHOCK) &&
-            padInfoMode(port, 0, PAD_MODECURID, 0) != PAD_TYPE_DUALSHOCK) {
-            padSetMainMode(port, 0, PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK);
+            !mode_set_done[port]) {
+            mode_set_done[port] = 1;
+            if (pad_mode_supported(port, PAD_TYPE_DUALSHOCK) &&
+                padInfoMode(port, 0, PAD_MODECURID, 0) != PAD_TYPE_DUALSHOCK) {
+                padSetMainMode(port, 0, PAD_MMODE_DUALSHOCK, PAD_MMODE_LOCK);
+            }
         }
 
         if (state == PAD_STATE_STABLE && padRead(port, 0, &buttons) != 0) {
-            pad_state[port].connected = 1;
-            pad_state[port].buttons = buttons.btns;
-            pad_state[port].ls_x = buttons.ljoy_h;
-            pad_state[port].ls_y = buttons.ljoy_v;
-            pad_state[port].rs_x = buttons.rjoy_h;
-            pad_state[port].rs_y = buttons.rjoy_v;
+            PadState *sp = &pad_state[port];
+
+            mode_set_done[port] = 1;
+            sp->connected = 1;
+            sp->buttons = buttons.btns;
+            sp->ls_x = buttons.ljoy_h;
+            sp->ls_y = buttons.ljoy_v;
+            sp->rs_x = buttons.rjoy_h;
+            sp->rs_y = buttons.rjoy_v;
             pad_update_type(port);
 
             /* Configure the actuators once per connection so that
              * padSetActDirect() can actually drive the vibration motors. */
-            if (!act_align_sent[port] &&
-                padInfoAct(port, 0, -1, 0) > 0) {
-                if (padSetActAlign(port, 0, (const char *)act_align[port])) {
+            if (!act_align_sent[port] && !act_checked[port]) {
+                act_supported[port] = padInfoAct(port, 0, -1, 0) > 0;
+                act_checked[port] = 1;
+
+                if (act_supported[port] &&
+                    padSetActAlign(port, 0, (const char *)act_align[port])) {
                     act_align_sent[port] = 1;
                 }
             }
@@ -231,8 +268,8 @@ void pad_ps2_poll(void)
             /* DualShock 2 analog button pressure (only on analog pads that
              * report it). Enter pressure mode once per connection. */
             if (!press_enabled[port] &&
-                (pad_state[port].type == PAD_ID_ANALOG ||
-                 pad_state[port].type == PAD_ID_ANALOG_STICK) &&
+                (sp->type == PAD_ID_ANALOG ||
+                 sp->type == PAD_ID_ANALOG_STICK) &&
                 padInfoPressMode(port, 0)) {
                 if (padEnterPressMode(port, 0)) {
                     press_enabled[port] = 1;
@@ -240,8 +277,6 @@ void pad_ps2_poll(void)
             }
 
             if (press_enabled[port]) {
-                PadState *sp = &pad_state[port];
-
                 sp->left_p  = buttons.left_p;
                 sp->right_p = buttons.right_p;
                 sp->up_p    = buttons.up_p;
@@ -269,11 +304,14 @@ void pad_ps2_poll(void)
             act_align[port][0] = 0;
             act_align[port][1] = 0;
             act_align_sent[port] = 0;
+            act_checked[port] = 0;
+            act_cooldown[port] = 0;
+            mode_set_done[port] = 0;
             press_enabled[port] = 0;
             pressure_reset(port);
         }
 
-        pad_send_motors(port);
+        pad_send_motors(port, state);
     }
 }
 

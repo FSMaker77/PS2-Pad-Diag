@@ -579,11 +579,13 @@ int main(int argc, const char **argv)
             uint8_t motor_small = 0;
             uint8_t motor_big = 0;
 
-            if (!(ctl->buttons & PAD_L2)) {
-                /* Update in steps so the pad has time to execute each
-                 * actuator command (a value every frame was too fast). */
-                if ((big_tick & 3) == 0) {
-                    uint32_t phase = (rumble_phase += 8) & 0x1ff;
+            /* Vibration is only driven while the button is held (see the
+             * README): L2 = big motor, R2 = small motor.  Keeping the motors
+             * idle avoids an actuator command every few frames, which is what
+             * made the pad drop out on real hardware. */
+            if (PRESSED(ctl->buttons, PAD_L2)) {
+                if ((big_tick & 7) == 0) {
+                    uint32_t phase = (rumble_phase += 16) & 0x1ff;
 
                     big_level = (uint8_t)(phase < 256 ? phase : 511 - phase);
                 }
@@ -596,7 +598,7 @@ int main(int argc, const char **argv)
                 big_level = 0;
             }
 
-            if (!(ctl->buttons & PAD_R2))
+            if (PRESSED(ctl->buttons, PAD_R2))
                 motor_small = 0x01;
 
             pad_ps2_set_motors(motor_small, motor_big);
