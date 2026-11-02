@@ -95,11 +95,16 @@ static void pad_send_motors(int port)
 
 /* Best-effort loading of the IOP modules needed by libpad. They may already
  * be loaded by the BIOS/host-loader (in which case these calls just fail and
- * are ignored). Tries host/host0 (the PCSX2/loader host device) and rom0. */
+ * are ignored).  Tries the disc image (ISO boot), the device the ELF was
+ * launched from (OPL app mode) and finally the modules built into the ROM. */
 static void pad_load_modules(void)
 {
     SifLoadModule("cdrom0:\\SIO2MAN.IRX;1", 0, NULL);
     SifLoadModule("cdrom0:\\PADMAN.IRX;1",  0, NULL);
+    SifLoadModule("mass:/SIO2MAN.IRX", 0, NULL);
+    SifLoadModule("mass:/PADMAN.IRX",  0, NULL);
+    SifLoadModule("mc0:/SIO2MAN.IRX", 0, NULL);
+    SifLoadModule("mc0:/PADMAN.IRX",  0, NULL);
     SifLoadModule("host:sio2man.irx", 0, NULL);
     SifLoadModule("host:padman.irx",   0, NULL);
     SifLoadModule("host0:sio2man.irx", 0, NULL);
