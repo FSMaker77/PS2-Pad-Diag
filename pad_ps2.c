@@ -1,7 +1,9 @@
+#include <stdio.h>
 #include <string.h>
 #include <sifrpc.h>
 #include <loadfile.h>
 #include "pad_ps2.h"
+#include "modules.h"
 
 static char pad_area[2][256] __attribute__((aligned(64)));
 static uint8_t act_align[2][6] __attribute__((aligned(64)));
@@ -10,6 +12,15 @@ static uint8_t press_enabled[2];
 static PadState pad_state[2];
 static uint8_t motor_small[2];
 static uint8_t motor_big[2];
+static uint8_t port_open[2];
+
+/* Diagnostics shown on screen when no pad is detected. */
+static int dbg_sio = -1;
+static int dbg_pad = -1;
+static int dbg_init = -1;
+static int dbg_open[2] = { -1, -1 };
+
+static void pad_open_port(int port);
 
 static int pad_mode_supported(int port, int mode)
 {
@@ -95,22 +106,18 @@ static void pad_send_motors(int port)
 
 /* Best-effort loading of the IOP modules needed by libpad. They may already
  * be loaded by the BIOS/host-loader (in which case these calls just fail and
- * are ignored).  Tries the disc image (ISO boot), the device the ELF was
- * launched from (OPL app mode) and finally the modules built into the ROM. */
+ * are ignored).  mod_load() looks on the disc image, next to the ELF on the
+ * USB stick / memory card and on the ps2link host device; the modules built
+ * into the ROM are the last resort. */
 static void pad_load_modules(void)
 {
-    SifLoadModule("cdrom0:\\SIO2MAN.IRX;1", 0, NULL);
-    SifLoadModule("cdrom0:\\PADMAN.IRX;1",  0, NULL);
-    SifLoadModule("mass:/SIO2MAN.IRX", 0, NULL);
-    SifLoadModule("mass:/PADMAN.IRX",  0, NULL);
-    SifLoadModule("mc0:/SIO2MAN.IRX", 0, NULL);
-    SifLoadModule("mc0:/PADMAN.IRX",  0, NULL);
-    SifLoadModule("host:sio2man.irx", 0, NULL);
-    SifLoadModule("host:padman.irx",   0, NULL);
-    SifLoadModule("host0:sio2man.irx", 0, NULL);
-    SifLoadModule("host0:padman.irx",   0, NULL);
-    SifLoadModule("rom0:XSIO2MAN",      0, NULL);
-    SifLoadModule("rom0:XPADMAN",       0, NULL);
+    dbg_sio = mod_load("SIO2MAN.IRX");
+    if (dbg_sio < 0)
+        dbg_sio = SifLoadModule("rom0:XSIO2MAN", 0, NULL);
+
+    dbg_pad = mod_load("PADMAN.IRX");
+    if (dbg_pad < 0)
+        dbg_pad = SifLoadModule("rom0:XPADMAN", 0, NULL);
 }
 
 void pad_ps2_init(void)
@@ -127,6 +134,7 @@ void pad_ps2_init(void)
     memset(act_align, 0, sizeof(act_align));
     memset(motor_small, 0, sizeof(motor_small));
     memset(motor_big, 0, sizeof(motor_big));
+    memset(port_open, 0, sizeof(port_open));
 
     for (port = 0; port < 2; port++) {
         pad_state[port].type = PAD_ID_NONE;
@@ -149,18 +157,52 @@ void pad_ps2_init(void)
         act_align_sent[port] = 0;
     }
 
-    padInit(0);
-    padPortOpen(0, 0, pad_area[0]);
-    padPortOpen(1, 0, pad_area[1]);
+    dbg_init = padInit(0);
+    for (port = 0; port < 2; port++)
+        pad_open_port(port);
+}
+
+/* padPortOpen() fails while padman is still starting up (or if SIO2MAN was
+ * not loaded yet).  Keep trying instead of giving up after one attempt, which
+ * is what made the tool report "NO PADS" on a real console. */
+static void pad_open_port(int port)
+{
+    if (port_open[port])
+        return;
+
+    dbg_open[port] = padPortOpen(port, 0, pad_area[port]);
+    if (dbg_open[port])
+        port_open[port] = 1;
+}
+
+void pad_ps2_diag(char *buf, int size)
+{
+    snprintf(buf, size, "S:%c P:%c I:%c O:%c/%c %x/%x",
+             dbg_sio >= 0 ? 'o' : '-',
+             dbg_pad >= 0 ? 'o' : '-',
+             dbg_init > 0 ? 'o' : '-',
+             dbg_open[0] > 0 ? 'o' : '-',
+             dbg_open[1] > 0 ? 'o' : '-',
+             padGetState(0, 0), padGetState(1, 0));
 }
 
 void pad_ps2_poll(void)
 {
+    static unsigned retry;
     int port;
+
+    retry++;
 
     for (port = 0; port < 2; port++) {
         struct padButtonStatus buttons;
-        unsigned char state = padGetState(port, 0);
+        unsigned char state;
+
+        /* Keep retrying the port open: on a real console it can fail while
+         * padman/SIO2MAN are still coming up. */
+        if (!port_open[port] && (retry & 63) == 0)
+            pad_open_port(port);
+
+        state = padGetState(port, 0);
 
         if ((state == PAD_STATE_STABLE || state == PAD_STATE_FINDCTP1) &&
             pad_mode_supported(port, PAD_TYPE_DUALSHOCK) &&

@@ -12,6 +12,7 @@
 #include <audsrv.h>
 
 #include "audio.h"
+#include "modules.h"
 
 extern unsigned char click_adp[];
 extern unsigned int size_click_adp;
@@ -27,13 +28,7 @@ void audio_init(void)
     sceSifInitRpc(0);
 
     /* libsd first: disc image (ISO boot), device (OPL app), ROM fallback. */
-    ret = SifLoadModule("cdrom0:\\LIBSD.IRX;1", 0, NULL);
-    if (ret < 0)
-        ret = SifLoadModule("mass:/LIBSD.IRX", 0, NULL);
-    if (ret < 0)
-        ret = SifLoadModule("mc0:/LIBSD.IRX", 0, NULL);
-    if (ret < 0)
-        ret = SifLoadModule("host:libsd.irx", 0, NULL);
+    ret = mod_load("LIBSD.IRX");
     if (ret < 0)
         ret = SifLoadModule("rom0:LIBSD", 0, NULL);
     if (ret < 0) {
@@ -43,15 +38,7 @@ void audio_init(void)
     }
     audio_stage = 2;
 
-    ret = SifLoadModule("cdrom0:\\AUDSRV.IRX;1", 0, NULL);
-    if (ret < 0)
-        ret = SifLoadModule("mass:/AUDSRV.IRX", 0, NULL);
-    if (ret < 0)
-        ret = SifLoadModule("mc0:/AUDSRV.IRX", 0, NULL);
-    if (ret < 0)
-        ret = SifLoadModule("host:audsrv.irx", 0, NULL);
-    if (ret < 0)
-        ret = SifLoadModule("host0:audsrv.irx", 0, NULL);
+    ret = mod_load("AUDSRV.IRX");
     if (ret < 0) {
         audio_stage = 3;
         audio_ok = 0;

@@ -30,4 +30,9 @@ void pad_ps2_poll(void);
 void pad_ps2_set_motors(uint8_t small, uint8_t big);
 PadState pad_ps2_get(int port);
 
+/* Short status string used by the UI when no pad is detected:
+ * S/P = SIO2MAN/PADMAN loaded, I = padInit, O = padPortOpen per port,
+ * followed by padGetState() for ports 1 and 2. */
+void pad_ps2_diag(char *buf, int size);
+
 #endif

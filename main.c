@@ -20,6 +20,7 @@
 #include "gfx_ps2.h"
 #include "pad_ps2.h"
 #include "audio.h"
+#include "modules.h"
 
 #define SPLASH_FRAMES 90
 
@@ -401,8 +402,11 @@ static void draw_ui(const PadState pads[2], const PadState *ctl, int port,
             strcat(btn, " ---");
 
         if (!ctl || !ctl->connected) {
+            char diag[32];
+
             prs[0] = '\0';
-            snprintf(btn, sizeof(btn), "NO PAD - PORTS 1/2");
+            pad_ps2_diag(diag, sizeof(diag));
+            snprintf(btn, sizeof(btn), "NO PAD %s", diag);
             prs_r = 220; prs_g = 90; prs_b = 90;
         } else {
             const char *strong = NULL;
@@ -507,6 +511,11 @@ int main(int argc, const char **argv)
         else if (strcmp(argv[i], "-pal") == 0 || strcmp(argv[i], "pal") == 0)
             force_mode = 2;
     }
+
+    /* When the loader gives us the ELF path, look for the IOP modules in the
+     * same directory first (launched from USB / memory card). */
+    if (argc > 0 && argv[0])
+        mod_set_base_dir(argv[0]);
 
     gfx_ps2_init(force_mode);
 
