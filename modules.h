@@ -28,4 +28,12 @@ void mod_set_base_dir(const char *dir);
  * absent. */
 int mod_rpc_alive(int sid);
 
+/* Can one of the candidate locations for this module be opened?  Used before
+ * unloading a module, so we only do it when we can put it back. */
+int mod_can_open(const char *name);
+
+/* Unload a resident module by name ("padman").  Returns 1 when something was
+ * unloaded. */
+int mod_unload(const char *name);
+
 #endif

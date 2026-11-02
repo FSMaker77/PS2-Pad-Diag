@@ -23,6 +23,7 @@ static int dbg_init = -1;
 static int dbg_open[2] = { -1, -1 };
 static char dbg_sio_path[56] = "";
 static char dbg_pad_path[56] = "";
+static int dbg_reloaded;
 
 static void pad_open_port(int port);
 
@@ -137,15 +138,15 @@ static void pad_send_motors(int port, unsigned char state)
  * into the ROM are the last resort. */
 static void pad_load_modules(void)
 {
-    /* OPL (and FMCB) already keep sio2man/padman in the IOP.  Loading our
-     * own copies would put two drivers on the SIO2 bus and the pad would
-     * answer with PAD_STATE_ERROR, so use the resident ones. */
-    if (mod_rpc_alive(PADMAN_RPC_ID)) {
-        dbg_sio = dbg_pad = 0;
-        dbg_sio_res = dbg_pad_res = 1;
-        snprintf(dbg_sio_path, sizeof(dbg_sio_path), "(already there)");
-        snprintf(dbg_pad_path, sizeof(dbg_pad_path), "(already there)");
-        return;
+    /* A launcher (OPL, uLaunchELF) calls padEnd() before handing over: padman
+     * stays resident but its vblank handler and worker threads are gone, so
+     * padPortOpen still answers while no SIO2 transfer ever completes.  The
+     * only way back is to let the module run its init again, i.e. unload and
+     * reload it.  Do that only when we can actually put the files back. */
+    if (mod_can_open("PADMAN.IRX") && mod_can_open("SIO2MAN.IRX")) {
+        mod_unload("padman");
+        mod_unload("sio2man");
+        dbg_reloaded = 1;
     }
 
     dbg_sio = mod_load("SIO2MAN.IRX");
@@ -241,7 +242,8 @@ void pad_ps2_diag(char *buf, int size)
     if (r1 > 2)
         r1 = 0;
 
-    snprintf(buf, size, "S:%c P:%c I:%c O:%c/%c %x/%x %c/%c",
+    snprintf(buf, size, "%sS:%c P:%c I:%c O:%c/%c %x/%x %c/%c",
+             dbg_reloaded ? "R " : "",
              dbg_sio < 0 ? '-' : (dbg_sio_res ? 'r' : 'o'),
              dbg_pad < 0 ? '-' : (dbg_pad_res ? 'r' : 'o'),
              dbg_init > 0 ? 'o' : '-',

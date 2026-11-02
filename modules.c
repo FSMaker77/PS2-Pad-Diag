@@ -15,6 +15,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <loadfile.h>
 #include <sifrpc.h>
 #include <kernel.h>
@@ -76,15 +78,25 @@ static void lower_copy(char *dst, const char *src, size_t size)
     dst[i] = '\0';
 }
 
+/* Candidate paths, in the order they are tried. */
+static const char *const candidate_fmt[] = {
+    "%s%s",              /* directory of the ELF, when known */
+    "cdrom0:\\%s;1",     /* self-contained ISO */
+    "mass:/APPS/%s", "mass0:/APPS/%s", "mass1:/APPS/%s",
+    "mass:/%s",      "mass0:/%s",      "mass1:/%s",
+    "mc0:/APPS/%s",  "mc0:/%s",        "mc1:/%s",
+};
+
+#define CANDIDATE_COUNT (sizeof(candidate_fmt) / sizeof(candidate_fmt[0]))
+
+static int build_candidate(char *path, size_t size, const char *name, size_t i)
+{
+    snprintf(path, size, candidate_fmt[i], base_dir, name);
+    return 0;
+}
+
 int mod_load(const char *name)
 {
-    static const char *const fmt[] = {
-        "%s%s",              /* directory of the ELF, when known */
-        "cdrom0:\\%s;1",     /* self-contained ISO */
-        "mass:/APPS/%s", "mass0:/APPS/%s", "mass1:/APPS/%s",
-        "mass:/%s",      "mass0:/%s",      "mass1:/%s",
-        "mc0:/APPS/%s",  "mc0:/%s",        "mc1:/%s",
-    };
     char path[160];
     char lower[48];
     int ret;
@@ -93,11 +105,11 @@ int mod_load(const char *name)
     last_path[0] = '\0';
     lower_copy(lower, name, sizeof(lower));
 
-    for (i = 0; i < sizeof(fmt) / sizeof(fmt[0]); i++) {
+    for (i = 0; i < CANDIDATE_COUNT; i++) {
         if (i == 0 && base_dir[0] == '\0')
             continue;
 
-        snprintf(path, sizeof(path), fmt[i], base_dir, name);
+        build_candidate(path, sizeof(path), name, i);
         ret = SifLoadModule(path, 0, NULL);
         if (ret >= 0) {
             snprintf(last_path, sizeof(last_path), "%s", path);
@@ -121,4 +133,97 @@ int mod_load(const char *name)
     }
 
     return -1;
+}
+
+int mod_can_open(const char *name)
+{
+    char path[160];
+    char lower[48];
+    int fd = -1;
+    size_t i;
+
+    lower_copy(lower, name, sizeof(lower));
+
+    for (i = 0; i < CANDIDATE_COUNT; i++) {
+        if (i == 0 && base_dir[0] == '\0')
+            continue;
+
+        build_candidate(path, sizeof(path), name, i);
+        fd = open(path, O_RDONLY);
+        if (fd >= 0) {
+            close(fd);
+            return 1;
+        }
+    }
+
+    snprintf(path, sizeof(path), "host:%s", lower);
+    fd = open(path, O_RDONLY);
+    if (fd >= 0) {
+        close(fd);
+        return 1;
+    }
+
+    snprintf(path, sizeof(path), "host0:%s", lower);
+    fd = open(path, O_RDONLY);
+    if (fd >= 0) {
+        close(fd);
+        return 1;
+    }
+
+    return 0;
+}
+
+/* ---- bounded "search module by name" ------------------------------------
+ * ps2sdk's SifSearchModuleByName() blocks forever on PCSX2 (the emulator
+ * does not answer that LOADFILE function), so the call is issued nowait and
+ * polled for a limited time. */
+
+#define LOADFILE_SID            0x80000006
+#define LF_F_SEARCH_MOD_BY_NAME 9
+
+struct lf_name_arg {
+    int  id;
+    int  dummy1;
+    char name[64];
+    char dummy2[64];
+} __attribute__((aligned(16)));
+
+static int search_module(const char *name)
+{
+    static SifRpcClientData_t cd __attribute__((aligned(64)));
+    static struct lf_name_arg arg __attribute__((aligned(64)));
+    int i;
+
+    memset(&cd, 0, sizeof(cd));
+    if (sceSifBindRpc(&cd, LOADFILE_SID, 0) < 0 || !cd.server)
+        return -1;
+
+    memset(&arg, 0, sizeof(arg));
+    strncpy(arg.name, name, sizeof(arg.name) - 1);
+
+    if (sceSifCallRpc(&cd, LF_F_SEARCH_MOD_BY_NAME, 1 /* nowait */,
+                      &arg, sizeof(arg), &arg, sizeof(arg), NULL, NULL) < 0)
+        return -1;
+
+    for (i = 0; i < 400; i++) {
+        int j;
+
+        if (!sceSifCheckStatRpc(&cd))
+            return arg.id;
+
+        for (j = 0; j < 2000; j++)
+            __asm__ __volatile__("nop\nnop\nnop\nnop");
+    }
+
+    return -1;
+}
+
+int mod_unload(const char *name)
+{
+    int id = search_module(name);
+
+    if (id < 0)
+        return 0;
+
+    return SifUnloadModule(id) >= 0;
 }
