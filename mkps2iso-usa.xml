@@ -20,7 +20,7 @@
 			<file name="audsrv.irx" source="audsrv.irx"/>
 
 			<!-- Padding to keep the drive from hunting. -->
-			<dummy sectors="10240"/>
+			<dummy sectors="512"/>
 
 		</directory_tree>
 	</layer>
