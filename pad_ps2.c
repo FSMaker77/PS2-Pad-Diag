@@ -2,8 +2,18 @@
 #include <string.h>
 #include <sifrpc.h>
 #include <loadfile.h>
+#include <iopheap.h>
 #include "pad_ps2.h"
 #include "modules.h"
+
+/* The two modules are also embedded in the ELF: when launched from OPL the
+ * app only sees iomanX/fileXio, so the ROM loader cannot open the .IRX
+ * files on mass: ("Unknown device").  SifExecModuleBuffer loads them from
+ * EE RAM instead. */
+extern unsigned char sio2man_irx[];
+extern unsigned int size_sio2man_irx;
+extern unsigned char padman_irx[];
+extern unsigned int size_padman_irx;
 
 static char pad_area[2][256] __attribute__((aligned(64)));
 static uint8_t act_align[2][6] __attribute__((aligned(64)));
@@ -132,7 +142,11 @@ static void pad_load_modules(void)
         dbg_reloaded = 1;
     }
 
-    dbg_sio = mod_load("SIO2MAN.IRX");
+    dbg_sio = SifExecModuleBuffer(sio2man_irx, size_sio2man_irx, 0, NULL, NULL);
+    if (dbg_sio >= 0)
+        snprintf(dbg_sio_path, sizeof(dbg_sio_path), "(built-in)");
+    if (dbg_sio < 0)
+        dbg_sio = mod_load("SIO2MAN.IRX");
     dbg_sio_res = 0;
     if (dbg_sio < 0) {
         dbg_sio = SifLoadModule("rom0:XSIO2MAN", 0, NULL);
@@ -142,7 +156,11 @@ static void pad_load_modules(void)
         snprintf(dbg_sio_path, sizeof(dbg_sio_path), "%s", mod_last_path());
     }
 
-    dbg_pad = mod_load("PADMAN.IRX");
+    dbg_pad = SifExecModuleBuffer(padman_irx, size_padman_irx, 0, NULL, NULL);
+    if (dbg_pad >= 0)
+        snprintf(dbg_pad_path, sizeof(dbg_pad_path), "(built-in)");
+    if (dbg_pad < 0)
+        dbg_pad = mod_load("PADMAN.IRX");
     dbg_pad_res = 0;
     if (dbg_pad < 0) {
         dbg_pad = SifLoadModule("rom0:XPADMAN", 0, NULL);
@@ -161,6 +179,7 @@ void pad_ps2_init(void)
      * padInit/padPortOpen calls block forever (the program looked stuck on
      * the splash screen). */
     sceSifInitRpc(0);
+    SifInitIopHeap();
     pad_load_modules();
 
     memset(pad_state, 0, sizeof(pad_state));

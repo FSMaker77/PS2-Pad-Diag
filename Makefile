@@ -8,7 +8,8 @@
 # (see ../ps2env.sh), then run:  make
 
 EE_BIN    = ps2pad-diag.elf
-EE_OBJS   = main.o gfx_ps2.o pad_ps2.o audio.o modules.o click_adp.o controller_bg.o splash_bg.o
+EE_OBJS   = main.o gfx_ps2.o pad_ps2.o audio.o modules.o click_adp.o \
+            controller_bg.o splash_bg.o sio2man_irx.o padman_irx.o
 
 EE_INCS   = -I$(PS2DEV)/gsKit/include
 EE_LDFLAGS = -s
@@ -26,6 +27,12 @@ splash_bg.c: assets/splash.raw
 
 click_adp.c: click.sad
 	$(PS2SDK)/bin/bin2c $< $@ click_adp
+
+sio2man_irx.c: sio2man.irx
+	$(PS2SDK)/bin/bin2c $< $@ sio2man_irx
+
+padman_irx.c: padman.irx
+	$(PS2SDK)/bin/bin2c $< $@ padman_irx
 
 include $(PS2SDK)/samples/Makefile.pref
 include $(PS2SDK)/samples/Makefile.eeglobal
