@@ -277,23 +277,6 @@ void pad_ps2_poll(void)
         state = padGetState(port, 0);
         last_state[port] = state;
 
-        /* PAD_STATE_EXECCMD means "the pad is busy with a request".  A short
-         * burst is normal, but if it never ends the port state machine is
-         * stuck: close and reopen it, which resets it cleanly. */
-        if (state == PAD_STATE_EXECCMD) {
-            if (++stuck_frames[port] > 300 && reopen_tries[port] < 3) {
-                reopen_tries[port]++;
-                stuck_frames[port] = 0;
-                padPortClose(port, 0);
-                port_open[port] = 0;
-                mode_set_done[port] = 0;
-                act_checked[port] = 0;
-                act_align_sent[port] = 0;
-            }
-        } else {
-            stuck_frames[port] = 0;
-        }
-
         /* Ask for the DualShock mode when the pad answers, but only once per
          * connection: padInfoMode() is an SIO2 round trip and must not run
          * every frame. */
