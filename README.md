@@ -86,6 +86,27 @@ argomenti `-ntsc` o `-pal` all'ELF (es. via ps2link), ma non servono per le ISO.
 I file `.elf` e le due ISO sono allegati alla release **v1.0** nella pagina
 [Releases](../../releases).
 
+
+### Come avviarlo
+
+**A. ps2link via rete (verificato, IOP pulito)**
+
+1. `PS2LINK.ELF` + `IPCONFIG.DAT` su chiavetta, avviati da uLaunchELF.
+2. Dal PC: `ps2client -h <ip_del_ps2> execee host:ps2pad-diag.elf`
+   lanciato dalla cartella del progetto (cosi' `sio2man.irx`/`padman.irx`
+   vengono presi da `host:`).
+
+**B. OPL -> Apps**
+
+In `mass:/APPS/` servono **cinque** file: `PS2PAD-DIAG.ELF`, `SIO2MAN.IRX`,
+`PADMAN.IRX`, `LIBSD.IRX`, `AUDSRV.IRX`. OPL, prima di cedere il controllo a
+un'app, chiama `padEnd()`: padman resta caricato ma senza thread. Il
+programma lo scarica e lo ricarica (la riga di stato inizia con `R` quando ci
+riesce). Senza i `.IRX` ripiega sui moduli di ROM `XSIO2MAN`/`XPADMAN`, che
+non implementano il protocollo RPC di libpad, e il pad non viene rilevato.
+
+**C. ISO su DVD-R** (browser PS2, percorso BIOS)
+
 ### Note PCSX2
 
 PCSX2 azzera la memoria video all'avvio, la PS2 no (di norma contiene `0xff`,
@@ -200,6 +221,26 @@ The `.elf` and both ISOs are attached to release **v1.0** on the
 
 
 ---
+
+
+### Running it
+
+**A. ps2link over the network (verified, clean IOP)**
+
+1. `PS2LINK.ELF` + `IPCONFIG.DAT` on the USB stick, started from uLaunchELF.
+2. From the PC: `ps2client -h <ps2_ip> execee host:ps2pad-diag.elf`, run from
+   the project directory so `host:` also serves `sio2man.irx`/`padman.irx`.
+
+**B. OPL -> Apps**
+
+`mass:/APPS/` needs **five** files: `PS2PAD-DIAG.ELF`, `SIO2MAN.IRX`,
+`PADMAN.IRX`, `LIBSD.IRX`, `AUDSRV.IRX`. OPL calls `padEnd()` before handing
+over to an app, which leaves padman resident but with its threads deleted; the
+tool unloads and reloads it (the status line starts with `R` when that works).
+Without the `.IRX` files it falls back to the ROM `XSIO2MAN`/`XPADMAN`, which
+do not implement libpad's RPC protocol, so the pad is never detected.
+
+**C. ISO on DVD-R** (PS2 browser, BIOS boot path)
 
 ### Troubleshooting
 
