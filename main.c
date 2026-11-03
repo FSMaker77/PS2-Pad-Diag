@@ -525,21 +525,17 @@ int main(int argc, const char **argv)
     if (argc > 0 && argv[0])
         mod_set_base_dir(argv[0]);
 
-    /* Pads and audio first, before any GS work: this is the order every
-     * working homebrew uses.  Touching the video mode before padman has
-     * started its vblank driven polling puts the port in PAD_STATE_ERROR on
-     * real hardware. */
-    pad_ps2_init();
-    audio_init();
-
     gfx_ps2_init(force_mode);
 
-    /* Plain, texture-free frame first: if the console shows this, the GS
-     * path and the video mode are fine and anything that goes wrong later
-     * is in the artwork upload. */
+    /* Plain, texture-free frame before touching the IOP: whatever happens
+     * next, the screen shows something instead of staying black, and a hang
+     * is visible on screen. */
     gfx_ps2_begin_frame(C_BG);
     text_center_c(160, 100, "STARTING...", C_TEXT);
     gfx_ps2_end_frame();
+
+    pad_ps2_init();
+    audio_init();
 
     for (f = 0; f < SPLASH_FRAMES; f++) {
         gfx_ps2_begin_frame(C_BG);

@@ -4,6 +4,7 @@
 /* RPC server ids of the modules we care about. */
 #define PADMAN_RPC_ID 0x80000100
 #define AUDSRV_RPC_ID 0x0870884e
+#define IOPHEAP_RPC_ID 0x80000003
 
 /* Load an IOP module by file name ("SIO2MAN.IRX") from every place it can
  * plausibly live: the disc image, the USB stick / memory card next to the

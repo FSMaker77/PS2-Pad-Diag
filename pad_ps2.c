@@ -34,6 +34,7 @@ static int dbg_open[2] = { -1, -1 };
 static char dbg_sio_path[56] = "";
 static char dbg_pad_path[56] = "";
 static int dbg_reloaded;
+static int dbg_iopheap;
 static int dbg_from_rom;
 
 static void pad_open_port(int port);
@@ -131,44 +132,60 @@ static void pad_send_motors(int port, unsigned char state)
  * into the ROM are the last resort. */
 static void pad_load_modules(void)
 {
+    int have_files;
+
+    /* SifInitIopHeap() loops forever when the IOP has no heap server (which
+     * is what happens when a launcher removed its modules), so probe first. */
+    dbg_iopheap = mod_rpc_alive(IOPHEAP_RPC_ID);
+    have_files = mod_can_open("PADMAN.IRX") && mod_can_open("SIO2MAN.IRX");
+
     /* A launcher (OPL, uLaunchELF) calls padEnd() before handing over: padman
-     * stays resident but its vblank handler and worker threads are gone, so
-     * padPortOpen still answers while no SIO2 transfer ever completes.  The
+     * stays resident but its vblank handler and worker threads are deleted, so
+     * padPortOpen still answers while no SIO2 transfer is ever completed.  The
      * only way back is to let the module run its init again, i.e. unload and
-     * reload it.  Do that only when we can actually put the files back. */
-    if (mod_can_open("PADMAN.IRX") && mod_can_open("SIO2MAN.IRX")) {
+     * reload it.  Only do that when we can put it back. */
+    if (dbg_iopheap || have_files) {
         mod_unload("padman");
         mod_unload("sio2man");
         dbg_reloaded = 1;
     }
 
-    dbg_sio = SifExecModuleBuffer(sio2man_irx, size_sio2man_irx, 0, NULL, NULL);
-    if (dbg_sio >= 0)
-        snprintf(dbg_sio_path, sizeof(dbg_sio_path), "(built-in)");
+    dbg_sio = -1;
+    dbg_sio_path[0] = '\0';
+    if (dbg_iopheap) {
+        SifInitIopHeap();   /* safe: the server answered the probe above */
+        dbg_sio = SifExecModuleBuffer(sio2man_irx, size_sio2man_irx, 0, NULL, NULL);
+        if (dbg_sio >= 0)
+            snprintf(dbg_sio_path, sizeof(dbg_sio_path), "(built-in)");
+    }
     if (dbg_sio < 0)
         dbg_sio = mod_load("SIO2MAN.IRX");
-    dbg_sio_res = 0;
     if (dbg_sio < 0) {
         dbg_sio = SifLoadModule("rom0:XSIO2MAN", 0, NULL);
         dbg_from_rom = 1;
         snprintf(dbg_sio_path, sizeof(dbg_sio_path), "rom0:XSIO2MAN");
-    } else {
+    } else if (dbg_sio_path[0] == '\0') {
         snprintf(dbg_sio_path, sizeof(dbg_sio_path), "%s", mod_last_path());
     }
+    dbg_sio_res = 0;
 
-    dbg_pad = SifExecModuleBuffer(padman_irx, size_padman_irx, 0, NULL, NULL);
-    if (dbg_pad >= 0)
-        snprintf(dbg_pad_path, sizeof(dbg_pad_path), "(built-in)");
+    dbg_pad = -1;
+    dbg_pad_path[0] = '\0';
+    if (dbg_iopheap) {
+        dbg_pad = SifExecModuleBuffer(padman_irx, size_padman_irx, 0, NULL, NULL);
+        if (dbg_pad >= 0)
+            snprintf(dbg_pad_path, sizeof(dbg_pad_path), "(built-in)");
+    }
     if (dbg_pad < 0)
         dbg_pad = mod_load("PADMAN.IRX");
-    dbg_pad_res = 0;
     if (dbg_pad < 0) {
         dbg_pad = SifLoadModule("rom0:XPADMAN", 0, NULL);
         dbg_from_rom = 1;
         snprintf(dbg_pad_path, sizeof(dbg_pad_path), "rom0:XPADMAN");
-    } else {
+    } else if (dbg_pad_path[0] == '\0') {
         snprintf(dbg_pad_path, sizeof(dbg_pad_path), "%s", mod_last_path());
     }
+    dbg_pad_res = 0;
 }
 
 void pad_ps2_init(void)
@@ -179,7 +196,6 @@ void pad_ps2_init(void)
      * padInit/padPortOpen calls block forever (the program looked stuck on
      * the splash screen). */
     sceSifInitRpc(0);
-    SifInitIopHeap();
     pad_load_modules();
 
     memset(pad_state, 0, sizeof(pad_state));
@@ -247,8 +263,9 @@ void pad_ps2_diag(char *buf, int size)
     if (r1 > 2)
         r1 = 0;
 
-    snprintf(buf, size, "%sS:%c P:%c I:%c O:%c/%c %x/%x %c/%c",
+    snprintf(buf, size, "%s%sS:%c P:%c I:%c O:%c/%c %x/%x %c/%c",
              dbg_reloaded ? "R " : "",
+             dbg_iopheap ? "" : "H ",
              dbg_sio < 0 ? '-' : (dbg_sio_res ? 'r' : 'o'),
              dbg_pad < 0 ? '-' : (dbg_pad_res ? 'r' : 'o'),
              dbg_init > 0 ? 'o' : '-',
