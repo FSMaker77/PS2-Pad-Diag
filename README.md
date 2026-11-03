@@ -54,64 +54,39 @@ porta 2. La porta attiva è evidenziata nell'header.
 ### Build
 
 Requisiti: [ps2sdk](https://github.com/ps2dev/ps2sdk) in `$PS2SDK`,
-[gsKit + dmaKit](https://github.com/ps2dev/gsKit), toolchain EE e
-`mkps2iso`.
+[gsKit + dmaKit](https://github.com/ps2dev/gsKit) e toolchain EE.
 
 ```sh
-./build.sh      # ELF + ISO EUR/PAL + ISO USA/NTSC
-# oppure
-make
+make            # produce ps2pad-diag.elf
+./build.sh      # ELF + (legacy) ISO EUR/PAL e USA/NTSC
 ```
 
-### ISO
+### Avvio (uLaunchELF) — metodo supportato
 
-Le ISO sono **autosufficienti**: contengono `SYSTEM.CNF`, l'ELF,
-`SIO2MAN.IRX`, `PADMAN.IRX`, `LIBSD.IRX` e `AUDSRV.IRX`. Non serve nessun
-altro file.
+Serve **un solo file**: `PS2PAD-DIAG.ELF`. I moduli `sio2man`, `padman`,
+`libsd` e `audsrv` sono **incorporati nell'ELF**, quindi non servono i `.IRX`
+ne' altri file.
 
-- `ps2pad-diag.iso` — regione **EUR/PAL**, per la console PAL originale
-- `ps2pad-diag-usa.iso` — regione **USA/NTSC**
+1. copia `PS2PAD-DIAG.ELF` in `mass:/APPS/` (o dove preferisci);
+2. avvia **uLaunchELF** (FMCB);
+3. `mass:/APPS/PS2PAD-DIAG.ELF` -> X.
 
-Il programma **segue la regione della console**: su una PS2 PAL esce a 576i/50 Hz,
-su una PS2 NTSC a 480i/60 Hz. La UI (640×448) viene centrata nella cornice PAL
-con bande nere sopra e sotto. Per forzare la modalità si possono passare gli
-argomenti `-ntsc` o `-pal` all'ELF (es. via ps2link), ma non servono per le ISO.
+Il programma **segue la regione della console**: PS2 PAL -> 576i/50 Hz,
+NTSC -> 480i/60 Hz; la UI 640x448 e' centrata nella cornice PAL. Si puo'
+forzare la modalita' con gli argomenti `-ntsc` / `-pal` (solo con un loader che
+li passa all'ELF).
 
-> **Se sullo schermo vedi solo bianco** leggi la sezione *Risoluzione problemi*
-> più sotto: è quasi sempre la TV che non aggancia i 60 Hz, oppure il buffer
-> del GS che non è mai stato disegnato (memoria video non inizializzata).
+All'avvio, se il pad non risponde entro circa un secondo (perche' il launcher
+ha spento padman con `padEnd()`), il programma **resetta l'IOP**, riapplica la
+patch `sbv_patch_enable_lmb` e ricarica i moduli dalla RAM: libpad si riaggancia
+e il pad torna a funzionare. In quel caso il click audio resta disattivato,
+perche' l'IOP perde `libsd`/`audsrv`.
 
-### Release
-
-I file `.elf` e le due ISO sono allegati alla release **v1.0** nella pagina
-[Releases](../../releases).
-
-
-### Come avviarlo
-
-**A. ps2link via rete (verificato, IOP pulito)**
-
-1. `PS2LINK.ELF` + `IPCONFIG.DAT` su chiavetta, avviati da uLaunchELF.
-2. Dal PC: `ps2client -h <ip_del_ps2> execee host:ps2pad-diag.elf`
-   lanciato dalla cartella del progetto (cosi' `sio2man.irx`/`padman.irx`
-   vengono presi da `host:`).
-
-**B. OPL -> Apps / uLaunchELF (basta l'ELF)**
-
-In `mass:/APPS/` basta il **solo** `PS2PAD-DIAG.ELF`: `sio2man` e `padman`
-sono incorporati nel file.
-
-OPL, prima di cedere il controllo a un'app, chiama `padEnd()`: padman resta
-residente ma senza thread, e libpad continua a parlare con quel server morto.
-Se dopo ~1 s nessun pad risponde, il programma esegue un **reset completo
-dell'IOP**, riapplica la patch `sbv_patch_enable_lmb()` e ricarica i due moduli
-dalla RAM: libpad si riaggancia e il pad funziona. La riga di stato mostra `I `
-quando il reset è avvenuto.
-
-Dopo il reset l'IOP perde i driver USB (`mass:` non è più accessibile): al
-programma non serve, ma il click audio resta disattivato.
-
-**C. ISO su DVD-R** (browser PS2, percorso BIOS)
+> **Non supportati in questa versione:**
+> - **OPL -> Apps**: si blocca nella fase 26 (`padInit`), perche' OPL spegne
+>   padman prima di cedere il controllo;
+> - **ISO**: su alcune console il boot "gioco" di OPL mostra schermo bianco
+>   anche con un ELF minimo di test, quindi il problema non e' il programma.
 
 ### Note PCSX2
 
@@ -142,16 +117,17 @@ Quindi, se sulla console vedi:
 - Verifica che la TV accetti il segnale della console: la UI segue la regione,
   quindi su una PS2 PAL esce a 50 Hz. Se la TV è collegata tramite un adattatore
   HDMI/scaler, controlla che supporti 576i.
-- Se hai bruciato la ISO sbagliata per la tua console, usa quella della tua
-  regione (`ps2pad-diag.iso` PAL, `ps2pad-diag-usa.iso` NTSC).
 - Con una console PAL e una TV che accetta i 60 Hz puoi forzare NTSC lanciando
   l'ELF con l'argomento `-ntsc`.
 
 **Il pad non risponde**
 
-- Con l'ELF avviato da memory card/USB i moduli `cdrom0:` non esistono: il
-  programma ripiega su `rom0:XSIO2MAN`/`rom0:XPADMAN`. Se anche questi non
-  bastano, copia `SIO2MAN.IRX` e `PADMAN.IRX` accanto all'ELF.
+- Non servono file aggiuntivi: `sio2man`/`padman` sono dentro l'ELF. Se il pad
+  non parte entro un secondo, il programma fa da solo il reset dell'IOP
+  (guardando lo schermo si vedono lampeggiare i numeri 31…35).
+- Se si ferma su un numero 26 o resta `STARTING...`, e' stato avviato da un
+  launcher che spegne padman prima del passaggio (tipicamente **OPL → Apps**):
+  usa **uLaunchELF**.
 
 ---
 
@@ -193,67 +169,38 @@ The active port is highlighted in the header.
 ### Build
 
 Requirements: [ps2sdk](https://github.com/ps2dev/ps2sdk) in `$PS2SDK`,
-[gsKit + dmaKit](https://github.com/ps2dev/gsKit), EE toolchain and
-`mkps2iso`.
+[gsKit + dmaKit](https://github.com/ps2dev/gsKit) and the EE toolchain.
 
 ```sh
-./build.sh      # ELF + EUR/PAL ISO + USA/NTSC ISO
-# or
-make
+make            # builds ps2pad-diag.elf
+./build.sh      # ELF + (legacy) EUR/PAL and USA/NTSC ISOs
 ```
 
-### ISO
+### Launching (uLaunchELF) — supported method
 
-Both ISOs are **self-contained**: they include `SYSTEM.CNF`, the ELF,
-`SIO2MAN.IRX`, `PADMAN.IRX`, `LIBSD.IRX` and `AUDSRV.IRX`. No other files are
-required.
+Only **one file** is needed: `PS2PAD-DIAG.ELF`. The IOP modules `sio2man`,
+`padman`, `libsd` and `audsrv` are **embedded in the ELF**, so the `.IRX` files
+are not required.
 
-- `ps2pad-diag.iso` — **EUR/PAL** region, for an original PAL console
-- `ps2pad-diag-usa.iso` — **USA/NTSC** region
+1. copy `PS2PAD-DIAG.ELF` to `mass:/APPS/` (or anywhere you like);
+2. start **uLaunchELF** (FMCB);
+3. `mass:/APPS/PS2PAD-DIAG.ELF` -> X.
 
-The program **follows the console region**: a PAL PS2 outputs 576i/50 Hz, an
-NTSC PS2 outputs 480i/60 Hz. The 640×448 UI is centred inside the PAL frame
-with black bars above and below. The mode can be forced by passing `-ntsc` or
-`-pal` to the ELF (e.g. through ps2link); the ISOs need no arguments.
+The program **follows the console region**: PAL PS2 -> 576i/50 Hz, NTSC ->
+480i/60 Hz; the 640x448 UI is centred inside the PAL frame. The mode can be
+forced with `-ntsc` / `-pal` (only with a loader that forwards arguments).
 
-> **If you only get a white screen** see *Troubleshooting* below: it is almost
-> always a TV that cannot lock to 60 Hz, or a GS framebuffer that was never
-> drawn (uninitialised video memory).
+If no pad answers within about a second (because the launcher shut padman down
+with `padEnd()`), the tool **resets the IOP**, re-applies
+`sbv_patch_enable_lmb` and reloads the modules from RAM: libpad rebinds and the
+pad works again. In that path the audio click stays off, because the IOP loses
+`libsd`/`audsrv`.
 
-### Releases
-
-The `.elf` and both ISOs are attached to release **v1.0** on the
-[Releases](../../releases) page.
-
-
----
-
-
-### Running it
-
-**A. ps2link over the network (verified, clean IOP)**
-
-1. `PS2LINK.ELF` + `IPCONFIG.DAT` on the USB stick, started from uLaunchELF.
-2. From the PC: `ps2client -h <ps2_ip> execee host:ps2pad-diag.elf`, run from
-   the project directory so `host:` also serves `sio2man.irx`/`padman.irx`.
-
-**B. OPL -> Apps / uLaunchELF (solo l'ELF)**
-
-`mass:/APPS/` basta con il **solo** `PS2PAD-DIAG.ELF`: `sio2man` e `padman`
-sono incorporati nel file.
-
-OPL, prima di cedere il controllo a un'app, chiama `padEnd()`: padman resta
-residente ma senza thread, e libpad continua a parlare con quel server morto.
-Se dopo ~1 s nessun pad risponde, il programma fa un **reset completo
-dell'IOP**, riapplica la patch `sbv_patch_enable_lmb()` e ricarica i due moduli
-dalla RAM: libpad si riaggancia e il pad torna a funzionare. La riga di stato
-mostra `I ` quando è avvenuto il reset.
-
-Attenzione: dopo il reset l'IOP perde i driver USB, quindi `mass:` non è più
-accessibile — il programma non ne ha bisogno (assets e moduli sono nell'ELF),
-ma il click audio resta disattivato in quel caso.
-
-**C. ISO on DVD-R** (PS2 browser, BIOS boot path)
+> **Not supported in this version:**
+> - **OPL -> Apps**: it stops at stage 26 (`padInit`), because OPL shuts padman
+>   down before handing over;
+> - **ISO**: on some consoles OPL's "game" boot shows a white screen even with
+>   a minimal test ELF, so the problem is not this program.
 
 ### Troubleshooting
 
@@ -279,13 +226,15 @@ So, on the console:
 Other checks:
 
 - The UI follows the console region (PAL PS2 → 50 Hz). Make sure the TV or the
-  HDMI/scaler accepts 576i, and burn the ISO for the console's region
-  (`ps2pad-diag.iso` PAL, `ps2pad-diag-usa.iso` NTSC).
+  HDMI/scaler accepts 576i.
 - On a PAL console with a 60 Hz capable TV, launch the ELF with `-ntsc` to force
   480i.
-- When the ELF is launched from a memory card/USB the `cdrom0:` modules do not
-  exist; the tool falls back to `rom0:XSIO2MAN`/`rom0:XPADMAN`. If that is not
-  enough, copy `SIO2MAN.IRX` and `PADMAN.IRX` next to the ELF.
+- No extra files are needed: `sio2man`/`padman` are inside the ELF. If no pad
+  answers within a second the tool resets the IOP by itself (stages 31…35 flash
+  on screen).
+- If it stops at stage 26 or stays on `STARTING...`, it was launched by
+  something that shuts padman down before handing over (typically **OPL →
+  Apps**): use **uLaunchELF**.
 
 ## Project layout
 
@@ -299,13 +248,14 @@ Other checks:
 | `click.sad` | generated one-shot ADPCM click |
 | `controller_ps2.png` | controller artwork |
 | `assets/controller.raw` | 640×448 CT32 controller background |
+| `sbv/` | patch `sbv_patch_enable_lmb` (ps2sdk, AFL-2.0), usata dal reset IOP |
 | `splash.jpg` | splash artwork |
 | `assets/splash.raw` | 640×448 CT32 splash background |
 | `sio2man.irx`, `padman.irx` | pad IOP modules (in the ISO) |
 | `libsd.irx`, `audsrv.irx` | audio IOP modules (in the ISO) |
 | `tools/genfont.py` | font generator |
 | `tools/mkbg.py` | artwork → CT32 raw converter |
-| `mkps2iso.xml`, `mkps2iso-usa.xml` | disc layouts |
+| `mkps2iso.xml`, `mkps2iso-usa.xml` | disc layouts (ISO legacy, non supportate) |
 | `SYSTEM.CNF`, `SYSTEM-USA.CNF` | boot configs |
 
 ## Credits / Licenses
