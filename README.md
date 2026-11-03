@@ -314,3 +314,6 @@ Other checks:
 - Embedded bitmap font derived from **Terminus** by Dimitar Zhekov, SIL Open
   Font License 1.1, see `FONT-LICENSE.txt`.
 - PS2SDK, gsKit, dmaKit, libpad, audsrv: their respective licenses.
+- `sbv/` = patch `sbv_patch_enable_lmb`/`sbv_patch_disable_prefix_check` from
+  ps2sdk (Academic Free License 2.0), necessaria per ricaricare i moduli IOP
+  dalla RAM dopo il reset.
