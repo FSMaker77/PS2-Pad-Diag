@@ -75,6 +75,12 @@ void audio_init(void)
     audio_stage = 8;
 }
 
+void audio_shutdown(void)
+{
+    audio_ok = 0;
+    audio_stage = 0;
+}
+
 int audio_active(void)
 {
     return audio_ok;

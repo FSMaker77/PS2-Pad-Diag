@@ -25,6 +25,7 @@ typedef struct {
     uint8_t press_mode;
 } PadState;
 
+extern int pad_force_reset;
 void pad_ps2_init(void);
 void pad_ps2_poll(void);
 void pad_ps2_set_motors(uint8_t small, uint8_t big);

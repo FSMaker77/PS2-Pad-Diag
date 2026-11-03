@@ -5,5 +5,6 @@ void audio_init(void);
 void audio_click(void);
 int audio_active(void);
 int audio_stage_get(void);
+void audio_shutdown(void);
 
 #endif

@@ -96,14 +96,20 @@ I file `.elf` e le due ISO sono allegati alla release **v1.0** nella pagina
    lanciato dalla cartella del progetto (cosi' `sio2man.irx`/`padman.irx`
    vengono presi da `host:`).
 
-**B. OPL -> Apps**
+**B. OPL -> Apps / uLaunchELF (basta l'ELF)**
 
-In `mass:/APPS/` servono **cinque** file: `PS2PAD-DIAG.ELF`, `SIO2MAN.IRX`,
-`PADMAN.IRX`, `LIBSD.IRX`, `AUDSRV.IRX`. OPL, prima di cedere il controllo a
-un'app, chiama `padEnd()`: padman resta caricato ma senza thread. Il
-programma lo scarica e lo ricarica (la riga di stato inizia con `R` quando ci
-riesce). Senza i `.IRX` ripiega sui moduli di ROM `XSIO2MAN`/`XPADMAN`, che
-non implementano il protocollo RPC di libpad, e il pad non viene rilevato.
+In `mass:/APPS/` basta il **solo** `PS2PAD-DIAG.ELF`: `sio2man` e `padman`
+sono incorporati nel file.
+
+OPL, prima di cedere il controllo a un'app, chiama `padEnd()`: padman resta
+residente ma senza thread, e libpad continua a parlare con quel server morto.
+Se dopo ~1 s nessun pad risponde, il programma esegue un **reset completo
+dell'IOP**, riapplica la patch `sbv_patch_enable_lmb()` e ricarica i due moduli
+dalla RAM: libpad si riaggancia e il pad funziona. La riga di stato mostra `I `
+quando il reset è avvenuto.
+
+Dopo il reset l'IOP perde i driver USB (`mass:` non è più accessibile): al
+programma non serve, ma il click audio resta disattivato.
 
 **C. ISO su DVD-R** (browser PS2, percorso BIOS)
 
@@ -231,14 +237,21 @@ The `.elf` and both ISOs are attached to release **v1.0** on the
 2. From the PC: `ps2client -h <ps2_ip> execee host:ps2pad-diag.elf`, run from
    the project directory so `host:` also serves `sio2man.irx`/`padman.irx`.
 
-**B. OPL -> Apps**
+**B. OPL -> Apps / uLaunchELF (solo l'ELF)**
 
-`mass:/APPS/` needs **five** files: `PS2PAD-DIAG.ELF`, `SIO2MAN.IRX`,
-`PADMAN.IRX`, `LIBSD.IRX`, `AUDSRV.IRX`. OPL calls `padEnd()` before handing
-over to an app, which leaves padman resident but with its threads deleted; the
-tool unloads and reloads it (the status line starts with `R` when that works).
-Without the `.IRX` files it falls back to the ROM `XSIO2MAN`/`XPADMAN`, which
-do not implement libpad's RPC protocol, so the pad is never detected.
+`mass:/APPS/` basta con il **solo** `PS2PAD-DIAG.ELF`: `sio2man` e `padman`
+sono incorporati nel file.
+
+OPL, prima di cedere il controllo a un'app, chiama `padEnd()`: padman resta
+residente ma senza thread, e libpad continua a parlare con quel server morto.
+Se dopo ~1 s nessun pad risponde, il programma fa un **reset completo
+dell'IOP**, riapplica la patch `sbv_patch_enable_lmb()` e ricarica i due moduli
+dalla RAM: libpad si riaggancia e il pad torna a funzionare. La riga di stato
+mostra `I ` quando è avvenuto il reset.
+
+Attenzione: dopo il reset l'IOP perde i driver USB, quindi `mass:` non è più
+accessibile — il programma non ne ha bisogno (assets e moduli sono nell'ELF),
+ma il click audio resta disattivato in quel caso.
 
 **C. ISO on DVD-R** (PS2 browser, BIOS boot path)
 

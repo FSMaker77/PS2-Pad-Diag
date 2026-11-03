@@ -530,6 +530,8 @@ int main(int argc, const char **argv)
             force_mode = 1;
         else if (strcmp(argv[i], "-pal") == 0 || strcmp(argv[i], "pal") == 0)
             force_mode = 2;
+        else if (strcmp(argv[i], "-hardreset") == 0)
+            pad_force_reset = 1;
     }
 
     /* When the loader gives us the ELF path, look for the IOP modules in the

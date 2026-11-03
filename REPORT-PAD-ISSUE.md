@@ -36,6 +36,12 @@ Il PS2 e il PC sono collegati **allo stesso switch**, ma su due sottoreti divers
 
 ## 3. Stato attuale
 
+> **RISOLTO (3/11, build 12:30).** Il fallback con reset IOP + patch LMB +
+> moduli incorporati è stato **verificato su hardware**: con
+> `ps2client execee host:ps2pad-diag.elf -hardreset` il programma mostra
+> `P1:ANA`. Vedi §9.1 per i dettagli; il report resta come documentazione del
+> percorso e delle cause intermedie.
+
 | Aspetto | Stato |
 |---|---|
 | Video: modalità, niente schermo bianco/nero, UI, splash, artwork | **FUNZIONA** (verificato a video) |

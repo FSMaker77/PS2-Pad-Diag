@@ -9,9 +9,11 @@
 
 EE_BIN    = ps2pad-diag.elf
 EE_OBJS   = main.o gfx_ps2.o pad_ps2.o audio.o modules.o click_adp.o \
-            controller_bg.o splash_bg.o sio2man_irx.o padman_irx.o
+            controller_bg.o splash_bg.o sio2man_irx.o padman_irx.o \
+            sbv/common.o sbv/patch_enable_lmb.o sbv/patch_disable_prefix_check.o \
+            sbv/slib.o sbv/smem.o sbv/smod.o
 
-EE_INCS   = -I$(PS2DEV)/gsKit/include
+EE_INCS   = -I$(PS2DEV)/gsKit/include -I.
 EE_LDFLAGS = -s
 EE_LIBS   = -L$(PS2DEV)/gsKit/lib -lgskit -ldmakit -lgskit_toolkit -lpad -laudsrv -lpatches
 

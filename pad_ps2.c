@@ -3,8 +3,11 @@
 #include <sifrpc.h>
 #include <loadfile.h>
 #include <iopheap.h>
+#include <iopcontrol.h>
+#include "sbv/sbv_patches.h"
 #include "pad_ps2.h"
 #include "modules.h"
+#include "audio.h"
 
 void show_stage(int n);
 
@@ -36,6 +39,10 @@ static int dbg_open[2] = { -1, -1 };
 static char dbg_sio_path[56] = "";
 static char dbg_pad_path[56] = "";
 static int dbg_reloaded;
+static int dbg_hard_reset;
+
+/* set from the command line (-hardreset): force the IOP reset path */
+int pad_force_reset;
 static int dbg_iopheap;
 static int dbg_from_rom;
 
@@ -136,8 +143,6 @@ static void pad_load_modules(void)
 {
     int have_files;
 
-    /* SifInitIopHeap() loops forever when the IOP has no heap server (which
-     * is what happens when a launcher removed its modules), so probe first. */
     show_stage(21);
     have_files = mod_can_open("PADMAN.IRX") && mod_can_open("SIO2MAN.IRX");
     show_stage(22);
@@ -159,14 +164,8 @@ static void pad_load_modules(void)
     if (!have_files)
         dbg_iopheap = mod_rpc_alive(IOPHEAP_RPC_ID);
 
-    /* A launcher (OPL, uLaunchELF) calls padEnd() before handing over: padman
-     * stays resident but its vblank handler and worker threads are deleted, so
-     * padPortOpen still answers while no SIO2 transfer is ever completed.  The
-     * only way back is to let the module run its init again, i.e. unload and
-     * reload it.  Only do that when we can put it back. */
     show_stage(23);
 
-    show_stage(24);
     dbg_sio = -1;
     dbg_sio_path[0] = '\0';
     if (dbg_iopheap) {
@@ -206,42 +205,49 @@ static void pad_load_modules(void)
     dbg_pad_res = 0;
 }
 
-/* Unload the resident sio2man/padman and load our own copies.  Only used when
- * the resident ones are dead (a launcher called padEnd() before starting us):
- * padman stays loaded but without its vblank handler and worker threads, so
- * no SIO2 transfer is ever completed. */
-static int pad_reload_stack(void)
+/* Hard fallback: throw the whole IOP away, re-apply the LoadModuleBuffer
+ * patch and load our own sio2man/padman from the arrays embedded in the ELF.
+ * Needed when a launcher (OPL) shut padman down with padEnd(): libpad keeps
+ * talking to the dead server, and only an IOP reboot makes it rebind
+ * (padInit() calls padCleanup() when it detects the reboot).
+ * Verified working on hardware. */
+static int pad_hard_reset(void)
 {
-    int ok = -1;
+    show_stage(31);
 
-    /* libpad caches the RPC server handles and padInit() returns 0 ("already
-     * initialised") without rebinding.  After the module is replaced it would
-     * keep talking to the old, dead one, so reset libpad first: padEnd()
-     * calls padCleanup() and makes the next padInit() bind again. */
-    padEnd();
+    SifIopReset("", 0);
+    while (!SifIopSync())
+        ;
 
-    mod_unload("padman");
-    mod_unload("sio2man");
+    show_stage(32);
+    sceSifInitRpc(0);
+    SifLoadFileExit();
+    SifLoadFileInit();
+    SifInitIopHeap();
 
-    if (dbg_iopheap) {
-        SifInitIopHeap();
-        ok = SifExecModuleBuffer(sio2man_irx, size_sio2man_irx, 0, NULL, NULL);
-    }
-    if (ok < 0)
-        ok = mod_load("SIO2MAN.IRX");
-    if (ok < 0)
-        ok = SifLoadModule("rom0:XSIO2MAN", 0, NULL);
-    if (ok < 0)
+    show_stage(33);
+    if (sbv_patch_enable_lmb() < 0)
+        return 0;
+    sbv_patch_disable_prefix_check();
+
+    show_stage(34);
+    if (SifExecModuleBuffer(sio2man_irx, size_sio2man_irx, 0, NULL, NULL) < 0)
+        return 0;
+    if (SifExecModuleBuffer(padman_irx, size_padman_irx, 0, NULL, NULL) < 0)
         return 0;
 
-    if (dbg_iopheap)
-        ok = SifExecModuleBuffer(padman_irx, size_padman_irx, 0, NULL, NULL);
-    if (ok < 0)
-        ok = mod_load("PADMAN.IRX");
-    if (ok < 0)
-        ok = SifLoadModule("rom0:XPADMAN", 0, NULL);
+    show_stage(35);
+    dbg_sio = dbg_pad = 0;
+    dbg_sio_res = dbg_pad_res = 0;
+    snprintf(dbg_sio_path, sizeof(dbg_sio_path), "(iop reset)");
+    snprintf(dbg_pad_path, sizeof(dbg_pad_path), "(iop reset)");
+    dbg_hard_reset = 1;
+    dbg_iopheap = 1;
 
-    return ok >= 0;
+    /* libsd/audsrv died with the old IOP: stop calling their RPC. */
+    audio_shutdown();
+
+    return 1;
 }
 
 void pad_ps2_init(void)
@@ -252,7 +258,13 @@ void pad_ps2_init(void)
      * padInit/padPortOpen calls block forever (the program looked stuck on
      * the splash screen). */
     sceSifInitRpc(0);
-    pad_load_modules();
+
+    if (pad_force_reset) {
+        if (!pad_hard_reset())
+            pad_load_modules();
+    } else {
+        pad_load_modules();
+    }
 
     memset(pad_state, 0, sizeof(pad_state));
     memset(act_align, 0, sizeof(act_align));
@@ -322,7 +334,7 @@ void pad_ps2_diag(char *buf, int size)
         r1 = 0;
 
     snprintf(buf, size, "%s%sS:%c P:%c I:%c O:%c/%c %x/%x %c/%c",
-             dbg_reloaded ? "R " : "",
+             dbg_hard_reset ? "I " : (dbg_reloaded ? "R " : ""),
              dbg_iopheap ? "" : "H ",
              dbg_sio < 0 ? '-' : (dbg_sio_res ? 'r' : 'o'),
              dbg_pad < 0 ? '-' : (dbg_pad_res ? 'r' : 'o'),
@@ -347,29 +359,29 @@ void pad_ps2_poll(void)
 {
     static unsigned retry;
     static unsigned wait_connected;
-    static int reload_tried;
+    static int reset_tried;
     int port;
 
     retry++;
 
-    /* Nothing answering after ~1.5 s?  Assume the resident padman was shut
-     * down by the launcher, replace the stack and initialise again. */
-    if (!reload_tried) {
-        if (pad_state[0].connected || pad_state[1].connected) {
+    /* If the launcher shut padman down (padEnd), libpad stays bound to the
+     * dead server and no transfer ever completes.  Only an IOP reboot makes
+     * libpad rebind, so after ~1 s without a pad do the full reset. */
+    if (!reset_tried && !pad_state[0].connected && !pad_state[1].connected) {
+        if (++wait_connected > 60) {
+            reset_tried = 1;
             wait_connected = 0;
-        } else if (++wait_connected > 90) {
-            reload_tried = 1;
-            wait_connected = 0;
-            if (!dbg_iopheap)
-                dbg_iopheap = mod_rpc_alive(IOPHEAP_RPC_ID);
-            if (pad_reload_stack()) {
-                dbg_reloaded = 1;
+
+            if (pad_hard_reset()) {
                 dbg_init = padInit(0);
-                port_open[0] = port_open[1] = 0;
+                port_open[0] = 0;
+                port_open[1] = 0;
                 pad_open_port(0);
                 pad_open_port(1);
             }
         }
+    } else {
+        wait_connected = 0;
     }
 
     for (port = 0; port < 2; port++) {
