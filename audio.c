@@ -24,15 +24,10 @@ static int   audio_stage;
 void audio_init(void)
 {
     int ret;
-    int resident;
 
     sceSifInitRpc(0);
 
-    /* OPL already has libsd/audsrv in the IOP: reuse them instead of loading
-     * a second libsd, which would fight over the SPU2. */
-    resident = mod_rpc_alive(AUDSRV_RPC_ID);
-
-    if (!resident) {
+    {
         ret = mod_load("LIBSD.IRX");
         if (ret < 0)
             ret = SifLoadModule("rom0:LIBSD", 0, NULL);
@@ -44,7 +39,7 @@ void audio_init(void)
     }
     audio_stage = 2;
 
-    if (!resident) {
+    {
         ret = mod_load("AUDSRV.IRX");
         if (ret < 0) {
             audio_stage = 3;

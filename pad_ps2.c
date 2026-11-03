@@ -6,6 +6,8 @@
 #include "pad_ps2.h"
 #include "modules.h"
 
+void show_stage(int n);
+
 /* The two modules are also embedded in the ELF: when launched from OPL the
  * app only sees iomanX/fileXio, so the ROM loader cannot open the .IRX
  * files on mass: ("Unknown device").  SifExecModuleBuffer loads them from
@@ -136,20 +138,35 @@ static void pad_load_modules(void)
 
     /* SifInitIopHeap() loops forever when the IOP has no heap server (which
      * is what happens when a launcher removed its modules), so probe first. */
-    dbg_iopheap = mod_rpc_alive(IOPHEAP_RPC_ID);
+    show_stage(21);
     have_files = mod_can_open("PADMAN.IRX") && mod_can_open("SIO2MAN.IRX");
+    show_stage(22);
+
+    /* A healthy padman is already in the IOP (uLaunchELF, PCSX2, a game):
+     * use it and load nothing.  Loading a second copy breaks the SIO2 bus. */
+    if (mod_rpc_alive(PADMAN_RPC_ID)) {
+        dbg_sio = dbg_pad = 0;
+        dbg_sio_res = dbg_pad_res = 1;
+        snprintf(dbg_sio_path, sizeof(dbg_sio_path), "(resident)");
+        snprintf(dbg_pad_path, sizeof(dbg_pad_path), "(resident)");
+        return;
+    }
+
+    /* Only probe the IOP heap when the files are unreachable (the OPL case):
+     * the probe is a blocking bind, and emulators do not answer binds for
+     * servers they do not implement. */
+    dbg_iopheap = 0;
+    if (!have_files)
+        dbg_iopheap = mod_rpc_alive(IOPHEAP_RPC_ID);
 
     /* A launcher (OPL, uLaunchELF) calls padEnd() before handing over: padman
      * stays resident but its vblank handler and worker threads are deleted, so
      * padPortOpen still answers while no SIO2 transfer is ever completed.  The
      * only way back is to let the module run its init again, i.e. unload and
      * reload it.  Only do that when we can put it back. */
-    if (dbg_iopheap || have_files) {
-        mod_unload("padman");
-        mod_unload("sio2man");
-        dbg_reloaded = 1;
-    }
+    show_stage(23);
 
+    show_stage(24);
     dbg_sio = -1;
     dbg_sio_path[0] = '\0';
     if (dbg_iopheap) {
@@ -169,6 +186,7 @@ static void pad_load_modules(void)
     }
     dbg_sio_res = 0;
 
+    show_stage(25);
     dbg_pad = -1;
     dbg_pad_path[0] = '\0';
     if (dbg_iopheap) {
@@ -186,6 +204,38 @@ static void pad_load_modules(void)
         snprintf(dbg_pad_path, sizeof(dbg_pad_path), "%s", mod_last_path());
     }
     dbg_pad_res = 0;
+}
+
+/* Unload the resident sio2man/padman and load our own copies.  Only used when
+ * the resident ones are dead (a launcher called padEnd() before starting us):
+ * padman stays loaded but without its vblank handler and worker threads, so
+ * no SIO2 transfer is ever completed. */
+static int pad_reload_stack(void)
+{
+    int ok = -1;
+
+    mod_unload("padman");
+    mod_unload("sio2man");
+
+    if (dbg_iopheap) {
+        SifInitIopHeap();
+        ok = SifExecModuleBuffer(sio2man_irx, size_sio2man_irx, 0, NULL, NULL);
+    }
+    if (ok < 0)
+        ok = mod_load("SIO2MAN.IRX");
+    if (ok < 0)
+        ok = SifLoadModule("rom0:XSIO2MAN", 0, NULL);
+    if (ok < 0)
+        return 0;
+
+    if (dbg_iopheap)
+        ok = SifExecModuleBuffer(padman_irx, size_padman_irx, 0, NULL, NULL);
+    if (ok < 0)
+        ok = mod_load("PADMAN.IRX");
+    if (ok < 0)
+        ok = SifLoadModule("rom0:XPADMAN", 0, NULL);
+
+    return ok >= 0;
 }
 
 void pad_ps2_init(void)
@@ -232,7 +282,9 @@ void pad_ps2_init(void)
         act_align_sent[port] = 0;
     }
 
+    show_stage(26);
     dbg_init = padInit(0);
+    show_stage(27);
     for (port = 0; port < 2; port++)
         pad_open_port(port);
 }
@@ -288,9 +340,31 @@ void pad_ps2_diag_modules(char *buf, int size)
 void pad_ps2_poll(void)
 {
     static unsigned retry;
+    static unsigned wait_connected;
+    static int reload_tried;
     int port;
 
     retry++;
+
+    /* Nothing answering after ~1.5 s?  Assume the resident padman was shut
+     * down by the launcher, replace the stack and initialise again. */
+    if (!reload_tried) {
+        if (pad_state[0].connected || pad_state[1].connected) {
+            wait_connected = 0;
+        } else if (++wait_connected > 90) {
+            reload_tried = 1;
+            wait_connected = 0;
+            if (!dbg_iopheap)
+                dbg_iopheap = mod_rpc_alive(IOPHEAP_RPC_ID);
+            if (pad_reload_stack()) {
+                dbg_reloaded = 1;
+                dbg_init = padInit(0);
+                port_open[0] = port_open[1] = 0;
+                pad_open_port(0);
+                pad_open_port(1);
+            }
+        }
+    }
 
     for (port = 0; port < 2; port++) {
         struct padButtonStatus buttons;

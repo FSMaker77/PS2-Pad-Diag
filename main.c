@@ -496,6 +496,18 @@ static void draw_splash(uint32_t frame)
     }
 }
 
+void show_stage(int n);
+
+void show_stage(int n)
+{
+    char b[8];
+
+    sprintf(b, "%d", n);
+    gfx_ps2_begin_frame(C_BG);
+    text_big(150, 100, b, 3, 255, 255, 255);
+    gfx_ps2_end_frame();
+}
+
 /* ------------------------------------------------------------------------- */
 /* Main                                                                      */
 /* ------------------------------------------------------------------------- */
@@ -528,14 +540,16 @@ int main(int argc, const char **argv)
     gfx_ps2_init(force_mode);
 
     /* Plain, texture-free frame before touching the IOP: whatever happens
-     * next, the screen shows something instead of staying black, and a hang
-     * is visible on screen. */
+     * next, the screen shows something instead of staying black. */
     gfx_ps2_begin_frame(C_BG);
     text_center_c(160, 100, "STARTING...", C_TEXT);
     gfx_ps2_end_frame();
 
+    show_stage(1);
     pad_ps2_init();
+    show_stage(2);
     audio_init();
+    show_stage(3);
 
     for (f = 0; f < SPLASH_FRAMES; f++) {
         gfx_ps2_begin_frame(C_BG);
