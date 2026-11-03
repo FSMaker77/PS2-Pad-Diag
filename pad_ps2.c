@@ -214,6 +214,12 @@ static int pad_reload_stack(void)
 {
     int ok = -1;
 
+    /* libpad caches the RPC server handles and padInit() returns 0 ("already
+     * initialised") without rebinding.  After the module is replaced it would
+     * keep talking to the old, dead one, so reset libpad first: padEnd()
+     * calls padCleanup() and makes the next padInit() bind again. */
+    padEnd();
+
     mod_unload("padman");
     mod_unload("sio2man");
 
@@ -320,9 +326,9 @@ void pad_ps2_diag(char *buf, int size)
              dbg_iopheap ? "" : "H ",
              dbg_sio < 0 ? '-' : (dbg_sio_res ? 'r' : 'o'),
              dbg_pad < 0 ? '-' : (dbg_pad_res ? 'r' : 'o'),
-             dbg_init > 0 ? 'o' : '-',
-             dbg_open[0] > 0 ? 'o' : '-',
-             dbg_open[1] > 0 ? 'o' : '-',
+             dbg_init >= 0 ? 'o' : '-',
+             dbg_open[0] >= 0 ? 'o' : '-',
+             dbg_open[1] >= 0 ? 'o' : '-',
              last_state[0], last_state[1],
              rst[r0], rst[r1]);
 }
