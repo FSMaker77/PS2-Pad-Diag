@@ -63,6 +63,7 @@ e in basso la provenienza dei moduli. Valori osservati:
 | OPL Apps, dopo reload moduli | `NO PAD S:o P:o I:o O:o/o 5/1 b/0` |
 | OPL Apps, build con messaggio | `NO PAD …` + basso: `COPY SIO2MAN.IRX+PADMAN.IRX IN APPS/` → i file **non** venivano visti |
 | **uLaunchELF** (foto, build 3/11 11:51) | `NO PAD R S:o P:o I:- O:-/- 5/5 b/b` + basso `SIO mass:/APPS/SIO2MAN.IRX  PAD mass:/APPS/PADMAN.IRX` |
+| **uLaunchELF** (build 3/11 12:22, con `padEnd()` prima del reload) | `NO PAD R S:o P:o I:- O:o/o 5/5 b/b` → **ancora `I:-` = padInit 0** |
 
 Significato dei campi:
 - `S:` / `P:` = `sio2man` / `padman` caricati (`o`), già residenti (`r`), falliti (`-`)
@@ -306,7 +307,14 @@ sembra quello di un libpad agganciato a un padman che non fa transfer.
 
 ## 9. Ipotesi ordinate
 
-**H1 (forte) — libpad resta agganciato al vecchio padman.**
+**H1 — CONFERMATA PARZIALMENTE (build 3/11 12:22): la correzione con `padEnd()` non basta.**
+`I:-` resta anche dopo il reload: quindi `padEnd()` non ha eseguito `padCleanup()`
+(libpad lo fa solo se la RPC END risponde 1; con padman già spento la RPC
+fallisce) e `padInit()` continua a restituire 0 sul server vecchio.
+`O:o/o` invece è migliorato (le porte risultano aperte), ma lo stato resta
+`5/5 b/b`.
+
+**H1-originale (forte) — libpad resta agganciato al vecchio padman.**
 `padInit()` ritorna 0 se `padsif[]` è già valorizzato (6.5). Dopo
 `mod_unload`+`mod_load` di padman, libpad continua a mandare le RPC al server
 vecchio/morto: `padPortOpen` risponde 0 e le transfer non avvengono mai
@@ -361,6 +369,28 @@ Da escludere per lo stesso motivo (funziona via ps2link).
 - Il motivo dello schermo bianco del percorso ISO (indipendente dal programma).
 
 ---
+
+### 9.1 Strada suggerita dopo H1
+
+`padInit()` chiama `padCleanup()` anche quando `HasIopRebootedSinceLastCall()`
+è vero. Quindi **un reset dell'IOP azzera libpad in modo affidabile**:
+
+```c
+SifIopReset("", 0);
+while (!SifIopSync()) ;
+/* poi ricaricare sio2man + padman e chiamare padInit() */
+```
+
+Problema: dopo `SifIopReset` la periferica `mass:` sparisce (nessun driver USB)
+e il loader dei moduli non supporta il caricamento da buffer senza la patch
+`sbv_patch_enable_lmb()` (che OPL applica solo alla sua sessione). Le due
+possibilità:
+
+1. incorporare i moduli nell'ELF **e** riuscire a usare `SifExecModuleBuffer`
+   dopo il reset → serve implementare/applicare la patch LMB (equivalente di
+   `sbv_patch_enable_lmb`, non presente in `libpatches.a` di questa installazione);
+2. tenere `padman` vivo: far sì che il launcher non chiami `padEnd()` (non
+   controllabile per OPL).
 
 ## 12. Prossimi passi consigliati
 
