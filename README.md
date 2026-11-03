@@ -28,7 +28,7 @@ Mostra a schermo un render del DualShock 2 e verifica in tempo reale:
   coordinate X/Y;
 - i **motori di vibrazione**: tieni premuto **L2** per il motore grande (barra
   BIG), **R2** per il piccolo (barra SML);
-- un **click audio** a ogni pressione di pulsante.
+
 
 La schermata mostra il controller reale e la splash con la barra di caricamento.
 La UI è pensata su una griglia 320×224 scalata 2× (640×448) con margini per
@@ -63,16 +63,7 @@ Il programma si adatta alla regione della console: su una PS2 PAL esce a
 576i/50 Hz, su una PS2 NTSC a 480i/60 Hz (la UI 640×448 viene centrata nella
 cornice PAL con bande nere sopra e sotto).
 
-### Build
 
-Requisiti: [ps2sdk](https://github.com/ps2dev/ps2sdk) in `$PS2SDK`,
-[gsKit + dmaKit](https://github.com/ps2dev/gsKit) e toolchain EE.
-
-```sh
-make
-```
-
-Produce `ps2pad-diag.elf`.
 
 ---
 
@@ -88,7 +79,7 @@ Shows a DualShock 2 render and live-tests:
 - both **analog sticks**, with a dot moving inside the well and X/Y readouts;
 - the **vibration motors**: hold **L2** for the big motor (BIG bar), **R2** for
   the small one (SML bar);
-- a short **click sound** on every button press.
+
 
 The screen uses the real controller artwork and the splash with the loading bar.
 The UI is designed on a 320×224 grid scaled 2× (640×448) with CRT overscan
@@ -123,38 +114,6 @@ The program follows the console region: a PAL PS2 outputs 576i/50 Hz, an NTSC
 PS2 outputs 480i/60 Hz (the 640×448 UI is centred inside the PAL frame with
 black bars above and below).
 
-### Build
-
-Requirements: [ps2sdk](https://github.com/ps2dev/ps2sdk) in `$PS2SDK`,
-[gsKit + dmaKit](https://github.com/ps2dev/gsKit) and the EE toolchain.
-
-```sh
-make
-```
-
-Produces `ps2pad-diag.elf`.
-
----
-
-## Project layout
-
-| File | Purpose |
-|---|---|
-| `main.c` | UI, splash, button overlays, click edge detection |
-| `gfx_ps2.c/h` | gsKit 2D layer (quads, text, shapes, backgrounds) |
-| `pad_ps2.c/h` | libpad polling, pressure, actuators |
-| `audio.c/h` | audsrv ADPCM click |
-| `modules.c/h` | IOP module loading (embedded copies, fallbacks) |
-| `sio2man_irx.c`, `padman_irx.c` | IOP modules embedded in the ELF |
-| `sbv/` | LoadModuleBuffer patch from ps2sdk (AFL-2.0) |
-| `font6x8.h` | generated 5×10 bitmap font |
-| `click.sad` | generated one-shot ADPCM click |
-| `controller_ps2.png` | controller artwork |
-| `assets/controller.raw` | 640×448 CT32 controller background |
-| `splash.jpg` | splash artwork |
-| `assets/splash.raw` | 640×448 CT32 splash background |
-| `tools/genfont.py` | font generator |
-| `tools/mkbg.py` | artwork → CT32 raw converter |
 
 ## Credits / Licenses
 
