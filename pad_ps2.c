@@ -22,6 +22,7 @@ extern unsigned int size_padman_irx;
 
 static char pad_area[2][256] __attribute__((aligned(64)));
 static uint8_t act_align[2][6] __attribute__((aligned(64)));
+static uint8_t act_direct[2][6] __attribute__((aligned(64)));
 static uint8_t act_align_sent[2];
 static uint8_t press_enabled[2];
 static PadState pad_state[2];
@@ -107,8 +108,8 @@ static void pad_send_motors(int port, unsigned char state)
         return;
     }
 
-    if (act_align[port][0] == motor_small[port] &&
-        act_align[port][1] == motor_big[port]) {
+    if (act_direct[port][0] == motor_small[port] &&
+        act_direct[port][1] == motor_big[port]) {
         return;
     }
 
@@ -119,17 +120,17 @@ static void pad_send_motors(int port, unsigned char state)
         return;
     }
 
-    prev_small = act_align[port][0];
-    prev_big = act_align[port][1];
+    prev_small = act_direct[port][0];
+    prev_big = act_direct[port][1];
 
-    act_align[port][0] = motor_small[port];
-    act_align[port][1] = motor_big[port];
+    act_direct[port][0] = motor_small[port];
+    act_direct[port][1] = motor_big[port];
 
-    if (padSetActDirect(port, 0, (const char *)act_align[port])) {
+    if (padSetActDirect(port, 0, (const char *)act_direct[port])) {
         act_cooldown[port] = ACT_MIN_FRAMES;
     } else {
-        act_align[port][0] = prev_small;
-        act_align[port][1] = prev_big;
+        act_direct[port][0] = prev_small;
+        act_direct[port][1] = prev_big;
         act_cooldown[port] = ACT_MIN_FRAMES;
     }
 }
@@ -293,10 +294,22 @@ void pad_ps2_init(void)
 
         /* Actuator alignment buffer: [0]=small engine on/off, [1]=big engine
          * speed (0-255), bytes [2..5]=0xff disable the unused actuators. */
+        /* Actuator map: byte 0 -> small engine, byte 1 -> big engine,
+         * bytes 2..5 unused (0xff).  This is the same layout the ps2sdk pad
+         * sample and OPL use; with 0 in byte 1 the big motor is never driven. */
+        act_align[port][0] = 0;
+        act_align[port][1] = 1;
         act_align[port][2] = 0xff;
         act_align[port][3] = 0xff;
         act_align[port][4] = 0xff;
         act_align[port][5] = 0xff;
+
+        act_direct[port][0] = 0;
+        act_direct[port][1] = 0;
+        act_direct[port][2] = 0xff;
+        act_direct[port][3] = 0xff;
+        act_direct[port][4] = 0xff;
+        act_direct[port][5] = 0xff;
         act_align_sent[port] = 0;
     }
 
@@ -479,8 +492,8 @@ void pad_ps2_poll(void)
             pad_state[port].rs_y = 128;
             motor_small[port] = 0;
             motor_big[port] = 0;
-            act_align[port][0] = 0;
-            act_align[port][1] = 0;
+            act_direct[port][0] = 0;
+            act_direct[port][1] = 0;
             act_align_sent[port] = 0;
             act_checked[port] = 0;
             act_cooldown[port] = 0;
