@@ -463,7 +463,7 @@ static void draw_ui(const PadState pads[2], const PadState *ctl, int port,
         return;
     }
 
-    sprintf(buf, "B7 A%d R%d", pad_ps2_actuators(port), pad_ps2_act_result(port));
+    sprintf(buf, "B9 A%d R%d", pad_ps2_actuators(port), pad_ps2_act_result(port));
     text_out_c(6, 198, buf, C_DIM);
 
     sprintf(buf, "%3d", motor_l);
@@ -598,17 +598,27 @@ int main(int argc, const char **argv)
         }
 
         if (ctl) {
+            static uint8_t big_level;
+            static uint32_t big_tick;
             uint8_t motor_small = 0;
             uint8_t motor_big = 0;
 
             /* Deterministic test: L2 = big motor at half power, R2 = small
              * motor on.  Fixed values make it obvious whether the command
              * reaches the pad. */
-            /* Full power: padman's overcurrent guard blocks changing the
-             * value while the motor is already running, so a progressive
-             * ramp would be zeroed after the first step. */
-            if (PRESSED(ctl->buttons, PAD_L2))
-                motor_big = 0xFF;
+            /* Progressive test: while L2 is held the big motor ramps from 0
+             * to 255 (about 4 s per sweep).  The value is sent only when it
+             * changes, which is what padman's overcurrent guard expects. */
+            if (PRESSED(ctl->buttons, PAD_L2)) {
+                if ((big_tick & 7) == 0)
+                    big_level = (uint8_t)(big_level + 8);
+
+                big_tick++;
+                motor_big = big_level;
+            } else {
+                big_tick = 0;
+                big_level = 0;
+            }
 
             if (PRESSED(ctl->buttons, PAD_R2))
                 motor_small = 0x01;

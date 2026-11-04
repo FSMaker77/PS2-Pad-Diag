@@ -26,8 +26,10 @@ Mostra a schermo un render del DualShock 2 e verifica in tempo reale:
   pressione 0–255);
 - i due **stick analogici**, con un puntino che si muove nel pozzetto e le
   coordinate X/Y;
-- i **motori di vibrazione**: tieni premuto **L2** per il motore grande (barra
-  BIG), **R2** per il piccolo (barra SML);
+- i **motori di vibrazione**: tieni premuto **L2** per il motore grande (la
+  barra BIG sale progressivamente da 0 a 255), **R2** per il piccolo (barra
+  SML). Il motore grande ha una zona morta: inizia a girare attorno a metà
+  scala, è normale;
 
 
 La schermata mostra il controller reale e la splash con la barra di caricamento.
@@ -44,7 +46,7 @@ porta 2. La porta attiva è evidenziata nell'header.
 |---|---|
 | Croce direzionale | evidenzia il braccio premuto |
 | △ ○ ✕ □ | evidenzia il tasto e la pressione |
-| L1 / L2 / R1 / R2 | evidenzia il tasto; L2 = motore grande, R2 = piccolo |
+| L1 / L2 / R1 / R2 | evidenzia il tasto; L2 = motore grande (0→255 progressivo), R2 = piccolo |
 | SELECT / START | evidenzia il tasto |
 | L3 / R3 | anello verde sullo stick, coordinate X/Y |
 | Stick analogici | puntino mobile nel pozzetto |
@@ -77,8 +79,9 @@ Shows a DualShock 2 render and live-tests:
 - **analog pressure** on pressure-sensitive buttons (green intensity follows the
   0–255 value);
 - both **analog sticks**, with a dot moving inside the well and X/Y readouts;
-- the **vibration motors**: hold **L2** for the big motor (BIG bar), **R2** for
-  the small one (SML bar);
+- the **vibration motors**: hold **L2** for the big motor (the BIG bar ramps
+  from 0 to 255), **R2** for the small one (SML bar). The big motor has a dead
+  zone and only starts around half scale, which is normal;
 
 
 The screen uses the real controller artwork and the splash with the loading bar.
@@ -95,7 +98,7 @@ active port is highlighted in the header.
 |---|---|
 | D-pad | highlights the pressed arm |
 | △ ○ ✕ □ | highlights the button and the pressure |
-| L1 / L2 / R1 / R2 | highlights the button; L2 = big motor, R2 = small |
+| L1 / L2 / R1 / R2 | highlights the button; L2 = big motor (0→255 ramp), R2 = small |
 | SELECT / START | highlights the button |
 | L3 / R3 | green ring on the stick, X/Y readout |
 | Analog sticks | moving cursor inside the well |
