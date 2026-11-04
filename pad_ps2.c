@@ -79,59 +79,49 @@ static void pad_update_type(int port)
 /* padInfoAct() is an SIO2 round trip: ask once per connection and keep the
  * answer.  Calling it (and padInfoMode) every frame disturbs padman's own
  * polling and puts the port in PAD_STATE_ERROR on a real console. */
-static uint8_t act_supported[2];
 static uint8_t act_checked[2];
-static uint16_t act_cooldown[2];
+static uint8_t act_count[2];
+static int act_ret[2];
 static uint8_t mode_set_done[2];
 static uint8_t type_checks[2];
 static uint8_t last_state[2];
 static uint16_t stuck_frames[2];
 static uint8_t reopen_tries[2];
 
-#define ACT_MIN_FRAMES 15   /* ~250 ms at 60 Hz */
 
 static void pad_send_motors(int port, unsigned char state)
 {
-    uint8_t prev_small;
-    uint8_t prev_big;
-
     if (!pad_state[port].connected || state != PAD_STATE_STABLE) {
         return;
     }
 
-    if (!act_checked[port]) {
-        act_supported[port] = padInfoAct(port, 0, -1, 0) > 0;
-        act_checked[port] = 1;
-    }
-
-    if (!act_supported[port]) {
-        return;
-    }
-
+    /* Send only when the value actually changes.  padSetActDirect() runs an
+     * anti-overcurrent check (CheckAirDirectTotal) that adds the current
+     * already drawn by the running motors to the new request: re-sending the
+     * same value doubles the total, crosses the 600 mA threshold and the
+     * request is silently zeroed.  That is why the small motor (low current)
+     * kept working while the big one never did. */
     if (act_direct[port][0] == motor_small[port] &&
         act_direct[port][1] == motor_big[port]) {
         return;
     }
 
-    /* Give the pad time to execute the previous actuator command: poking it
-     * every frame is what made the controller drop out. */
-    if (act_cooldown[port] > 0) {
-        act_cooldown[port]--;
-        return;
-    }
+    {
+        uint8_t prev_small = act_direct[port][0];
+        uint8_t prev_big = act_direct[port][1];
 
-    prev_small = act_direct[port][0];
-    prev_big = act_direct[port][1];
+        act_direct[port][0] = motor_small[port];
+        act_direct[port][1] = motor_big[port];
 
-    act_direct[port][0] = motor_small[port];
-    act_direct[port][1] = motor_big[port];
+        act_ret[port] = padSetActDirect(port, 0, (const char *)act_direct[port]);
 
-    if (padSetActDirect(port, 0, (const char *)act_direct[port])) {
-        act_cooldown[port] = ACT_MIN_FRAMES;
-    } else {
-        act_direct[port][0] = prev_small;
-        act_direct[port][1] = prev_big;
-        act_cooldown[port] = ACT_MIN_FRAMES;
+        /* padman refuses the command while another task is running.  Keep the
+         * old value on failure so the request is retried on the next frame
+         * instead of being marked as already sent. */
+        if (!act_ret[port]) {
+            act_direct[port][0] = prev_small;
+            act_direct[port][1] = prev_big;
+        }
     }
 }
 
@@ -273,7 +263,6 @@ void pad_ps2_init(void)
     memset(motor_big, 0, sizeof(motor_big));
     memset(port_open, 0, sizeof(port_open));
     memset(act_checked, 0, sizeof(act_checked));
-    memset(act_cooldown, 0, sizeof(act_cooldown));
     memset(mode_set_done, 0, sizeof(mode_set_done));
     memset(type_checks, 0, sizeof(type_checks));
     memset(last_state, 0, sizeof(last_state));
@@ -356,6 +345,20 @@ void pad_ps2_diag(char *buf, int size)
              dbg_open[1] >= 0 ? 'o' : '-',
              last_state[0], last_state[1],
              rst[r0], rst[r1]);
+}
+
+int pad_ps2_actuators(int port)
+{
+    if (port < 0 || port > 1)
+        return 0;
+    return act_count[port];
+}
+
+int pad_ps2_act_result(int port)
+{
+    if (port < 0 || port > 1)
+        return -1;
+    return act_ret[port];
 }
 
 void pad_ps2_diag_modules(char *buf, int size)
@@ -444,16 +447,21 @@ void pad_ps2_poll(void)
                 pad_update_type(port);
             }
 
-            /* Configure the actuators once per connection so that
-             * padSetActDirect() can actually drive the vibration motors. */
-            if (!act_align_sent[port] && !act_checked[port]) {
-                act_supported[port] = padInfoAct(port, 0, -1, 0) > 0;
-                act_checked[port] = 1;
+            /* Actuator alignment first: padman rejects it while a request is
+             * pending, and padInfoAct() sets exactly that flag.  Retry every
+             * frame until it is accepted, otherwise the big motor is mapped
+             * wrong and never spins. */
+            if (!act_align_sent[port] &&
+                padSetActAlign(port, 0, (const char *)act_align[port])) {
+                act_align_sent[port] = 1;
+            }
 
-                if (act_supported[port] &&
-                    padSetActAlign(port, 0, (const char *)act_align[port])) {
-                    act_align_sent[port] = 1;
-                }
+            /* Only afterwards ask how many actuators the pad has (marketing
+             * for the UI; it must not gate the motors). */
+            if (act_align_sent[port] && act_count[port] == 0) {
+                int n = padInfoAct(port, 0, -1, 0);
+
+                act_count[port] = (uint8_t)(n > 0 ? n : 0);
             }
 
             /* DualShock 2 analog button pressure (only on analog pads that
@@ -496,7 +504,6 @@ void pad_ps2_poll(void)
             act_direct[port][1] = 0;
             act_align_sent[port] = 0;
             act_checked[port] = 0;
-            act_cooldown[port] = 0;
             mode_set_done[port] = 0;
             type_checks[port] = 0;
             press_enabled[port] = 0;

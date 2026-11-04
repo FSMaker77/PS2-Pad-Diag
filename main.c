@@ -463,6 +463,9 @@ static void draw_ui(const PadState pads[2], const PadState *ctl, int port,
         return;
     }
 
+    sprintf(buf, "B7 A%d R%d", pad_ps2_actuators(port), pad_ps2_act_result(port));
+    text_out_c(6, 198, buf, C_DIM);
+
     sprintf(buf, "%3d", motor_l);
     text_out_c( 10, 208, "BIG", C_DIM);
     draw_level_bar(34, 208, 100, 9, motor_l, ctl && ctl->connected);
@@ -515,7 +518,6 @@ void show_stage(int n)
 int main(int argc, const char **argv)
 {
     PadState p[2];
-    uint32_t rumble_phase = 0;
     uint32_t frame = 0;
     uint32_t f;
     int force_mode = 0;
@@ -596,29 +598,17 @@ int main(int argc, const char **argv)
         }
 
         if (ctl) {
-            static uint8_t big_level;
-            static uint32_t big_tick;
             uint8_t motor_small = 0;
             uint8_t motor_big = 0;
 
-            /* Vibration is only driven while the button is held (see the
-             * README): L2 = big motor, R2 = small motor.  Keeping the motors
-             * idle avoids an actuator command every few frames, which is what
-             * made the pad drop out on real hardware. */
-            if (PRESSED(ctl->buttons, PAD_L2)) {
-                if ((big_tick & 7) == 0) {
-                    uint32_t phase = (rumble_phase += 16) & 0x1ff;
-
-                    big_level = (uint8_t)(phase < 256 ? phase : 511 - phase);
-                }
-
-                big_tick++;
-                motor_big = big_level;
-            } else {
-                rumble_phase = 0;
-                big_tick = 0;
-                big_level = 0;
-            }
+            /* Deterministic test: L2 = big motor at half power, R2 = small
+             * motor on.  Fixed values make it obvious whether the command
+             * reaches the pad. */
+            /* Full power: padman's overcurrent guard blocks changing the
+             * value while the motor is already running, so a progressive
+             * ramp would be zeroed after the first step. */
+            if (PRESSED(ctl->buttons, PAD_L2))
+                motor_big = 0xFF;
 
             if (PRESSED(ctl->buttons, PAD_R2))
                 motor_small = 0x01;

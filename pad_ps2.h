@@ -39,4 +39,10 @@ void pad_ps2_diag(char *buf, int size);
 /* Same, but with where SIO2MAN/PADMAN came from (for the bottom line). */
 void pad_ps2_diag_modules(char *buf, int size);
 
+/* Number of actuators the pad reported (0 = none / not queried yet). */
+int pad_ps2_actuators(int port);
+
+/* Result of the last padSetActDirect() call (0 = failed, 1 = ok). */
+int pad_ps2_act_result(int port);
+
 #endif
